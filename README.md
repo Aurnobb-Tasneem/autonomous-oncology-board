@@ -238,4 +238,9 @@ This project is a research demonstration built for the AMD Developer Hackathon 2
 
 ## License
 
-Submitted for hackathon evaluation. Not licensed for production or clinical use.
+Copyright 2026 **Aurnobb Tasneem**
+
+Licensed under the [Apache License 2.0](LICENSE).
+
+> **Commercial use of this software requires written permission from the author.**
+> Contact: taurnobb@gmail.com
