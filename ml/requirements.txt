@@ -6,9 +6,9 @@
 # STEP 1: Install ROCm PyTorch FIRST (do NOT use pip install torch directly):
 #   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.0
 #
-# STEP 2: Install vLLM ROCm build:
-#   pip install vllm
-#   (On ROCm hosts, vllm wheels are built against HIP — verify with: python -c "import vllm")
+# STEP 2: Install and start Ollama (ROCm-native LLM serving):
+#   curl -fsSL https://ollama.com/install.sh | sh
+#   ollama pull llama3.3:70b
 #
 # STEP 3: Install GigaPath (gated HuggingFace model + timm integration):
 #   pip install git+https://github.com/prov-gigapath/prov-gigapath
@@ -23,7 +23,7 @@
 # torch          — installed separately via ROCm wheel (see STEP 1)
 # vllm           — installed separately via ROCm wheel (see STEP 2)
 timm>=0.9.16                  # GigaPath uses timm model registry
-openslide-python>=3.4.1       # WSI reading (.svs, .tiff, .ndpi) — Day 5+
+openslide-python>=1.4.0       # WSI reading (.svs, .tiff, .ndpi) — optional
 Pillow>=10.0.0                # Image processing
 numpy>=1.24.0
 scipy>=1.11.0
@@ -37,7 +37,7 @@ torchvision>=0.16.0           # Included in ROCm wheel install
 # --------------------------------------------------------------------------- #
 # LLM / RAG                                                                   #
 # --------------------------------------------------------------------------- #
-# vllm           — installed separately (see STEP 2)
+# Ollama serves Llama 3.3 70B on the HOST (see STEP 2). No pip install needed.
 sentence-transformers>=2.6.0  # Document embedding for RAG corpus indexing
 qdrant-client>=1.8.0          # Vector DB client (in-process mode)
 transformers>=4.40.0          # Tokenizers, model cards, HF hub
@@ -46,10 +46,8 @@ accelerate>=0.28.0            # Required by some HF model loading paths
 tokenizers>=0.19.0
 
 # --------------------------------------------------------------------------- #
-# Agent Orchestration                                                           #
+# Agent Orchestration — custom state machine in board.py (no extra deps)      #
 # --------------------------------------------------------------------------- #
-crewai>=0.28.0                # Multi-agent framework (fallback: custom state machine)
-crewai-tools>=0.4.0
 
 # --------------------------------------------------------------------------- #
 # API Layer                                                                    #
