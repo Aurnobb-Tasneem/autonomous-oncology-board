@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # suppress Node.js 20 deprecation warning
+
 jobs:
   deploy:
     name: Deploy to AMD MI300X
@@ -13,10 +16,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check SSH secrets are configured
+        run: |
+          if [ -z "${{ secrets.AMD_HOST }}" ]; then
+            echo "::warning::AMD_HOST secret not set — skipping SSH deploy (dev/test push)"
+            echo "SKIP_DEPLOY=true" >> $GITHUB_ENV
+          else
+            echo "SKIP_DEPLOY=false" >> $GITHUB_ENV
+          fi
+
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        if: env.SKIP_DEPLOY == 'false'
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.AMD_HOST }}
           username: ${{ secrets.AMD_USER }}
           key: ${{ secrets.AMD_SSH_KEY }}
           script: bash /root/aob/scripts/deploy.sh
+          command_timeout: 5m
+
+      - name: Skip notice
+        if: env.SKIP_DEPLOY == 'true'
+        run: |
+          echo "ℹ️  SSH deploy skipped — AMD_HOST secret not configured."
+          echo "Set AMD_HOST, AMD_USER, AMD_SSH_KEY in repo Settings → Secrets → Actions."
