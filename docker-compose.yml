@@ -1,0 +1,81 @@
+version: "3.9"
+
+# =============================================================================
+# AOB Local Development — docker-compose.yml
+# =============================================================================
+# NOTE: The ML layer (PyTorch + ROCm + vLLM) CANNOT run in Docker on a
+# standard developer machine. It requires the AMD MI300X ROCm host.
+# This compose file is for local development of the API gateway and frontend.
+#
+# Usage:
+#   docker compose up              # Start NestJS gateway + frontend dev server
+#   docker compose up qdrant       # Start Qdrant only (for RAG dev)
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Qdrant — local vector database (in-process for hackathon, but useful
+  # to have a standalone instance for local RAG development)
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aob-qdrant
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # NestJS API Gateway
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: aob-backend
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      ML_API_URL: ${ML_API_URL:-http://host.docker.internal:8000}  # FastAPI on ROCm host
+      PORT: 3001
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    command: npm run start:dev
+
+  # ---------------------------------------------------------------------------
+  # Next.js Frontend
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: aob-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    command: npm run dev
+
+volumes:
+  qdrant_data:

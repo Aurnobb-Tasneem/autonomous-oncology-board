@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "aob-ml"
+version = "0.1.0"
+description = "Autonomous Oncology Board — ML layer (AMD MI300X / ROCm)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Proprietary — Hackathon Use Only"}
+authors = [
+  {name = "AOB Team"}
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ml*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_return_any = false

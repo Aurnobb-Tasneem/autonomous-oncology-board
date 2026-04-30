@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Autonomous Oncology Board — AMD MI300X</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --amd-orange: #ff6b35;
+    --amd-red: #e31837;
+    --bg: #060d1a;
+    --surface: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --green: #10b981;
+    --blue: #3b82f6;
+    --purple: #8b5cf6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Animated background */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: 0;
+    background: radial-gradient(ellipse at 20% 20%, rgba(227,24,55,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(255,107,53,0.06) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* Header */
+  header { padding: 24px 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--amd-red), var(--amd-orange)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .logo h1 { font-size: 18px; font-weight: 700; }
+  .logo p { font-size: 12px; color: var(--muted); }
+  .badge { background: rgba(255,107,53,0.15); border: 1px solid rgba(255,107,53,0.3); color: var(--amd-orange); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+
+  /* Sections */
+  #upload-section, #board-section, #report-section { padding: 40px 0; }
+  #board-section, #report-section { display: none; }
+
+  /* Upload */
+  .upload-hero { text-align: center; margin-bottom: 40px; }
+  .upload-hero h2 { font-size: 36px; font-weight: 700; margin-bottom: 12px;
+    background: linear-gradient(135deg, #fff, rgba(255,107,53,0.9)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .upload-hero p { color: var(--muted); font-size: 16px; max-width: 500px; margin: 0 auto; }
+  .hw-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 20px; padding: 6px 16px; font-size: 13px; color: var(--green); margin-top: 16px; }
+
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 16px; padding: 60px 40px; text-align: center;
+    cursor: pointer; transition: all 0.2s; background: var(--surface); margin-bottom: 24px;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--amd-orange); background: rgba(255,107,53,0.05); }
+  .drop-zone .icon { font-size: 48px; margin-bottom: 16px; }
+  .drop-zone h3 { font-size: 18px; margin-bottom: 8px; }
+  .drop-zone p { color: var(--muted); font-size: 14px; }
+  #file-input { display: none; }
+  .patch-preview { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 16px 0; }
+  .patch-thumb { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; border: 2px solid var(--border); }
+  .btn { background: linear-gradient(135deg, var(--amd-red), var(--amd-orange)); color: #fff; border: none; padding: 14px 32px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; width: 100%; }
+  .btn:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .demo-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 24px; border-radius: 8px; font-size: 14px; cursor: pointer; margin-top: 12px; width: 100%; }
+  .demo-btn:hover { border-color: var(--amd-orange); color: var(--amd-orange); }
+
+  /* Agent cards */
+  .board-header { text-align: center; margin-bottom: 32px; }
+  .board-header h2 { font-size: 28px; font-weight: 700; }
+  .board-header p { color: var(--muted); margin-top: 8px; }
+  .agents-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .agent-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px;
+    transition: all 0.3s; position: relative; overflow: hidden;
+  }
+  .agent-card.active { border-color: var(--amd-orange); box-shadow: 0 0 24px rgba(255,107,53,0.15); }
+  .agent-card.done { border-color: var(--green); box-shadow: 0 0 16px rgba(16,185,129,0.1); }
+  .agent-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--amd-red), var(--amd-orange)); transform: scaleX(0); transition: transform 0.5s; }
+  .agent-card.active::before, .agent-card.done::before { transform: scaleX(1); }
+  .agent-icon { font-size: 32px; margin-bottom: 12px; }
+  .agent-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .agent-model { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .agent-status { font-size: 13px; color: var(--muted); min-height: 40px; line-height: 1.5; }
+  .agent-status.running { color: var(--amd-orange); }
+  .agent-status.done { color: var(--green); }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--amd-orange); margin-right: 6px; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+
+  /* Steps feed */
+  .steps-feed { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 12px; padding: 20px; max-height: 200px; overflow-y: auto; }
+  .step-item { font-size: 13px; color: var(--muted); padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  .step-item:last-child { border-bottom: none; color: var(--text); }
+  .step-item .step-agent { display: inline-block; width: 90px; color: var(--amd-orange); font-weight: 500; }
+
+  /* Report */
+  .report-header { background: linear-gradient(135deg, rgba(255,107,53,0.1), rgba(227,24,55,0.05)); border: 1px solid rgba(255,107,53,0.2); border-radius: 16px; padding: 32px; margin-bottom: 24px; }
+  .report-header h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .report-meta { font-size: 13px; color: var(--muted); }
+  .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .report-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .report-card h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .report-card p, .report-card li { font-size: 14px; line-height: 1.6; }
+  .report-card ul { padding-left: 16px; }
+  .report-card li { margin-bottom: 6px; }
+  .confidence-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 8px; }
+  .confidence-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--amd-red), var(--green)); transition: width 1s; }
+  .tag { display: inline-block; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: var(--blue); padding: 2px 10px; border-radius: 12px; font-size: 12px; margin: 2px; }
+  .disclaimer { background: rgba(255,200,0,0.06); border: 1px solid rgba(255,200,0,0.15); border-radius: 10px; padding: 14px; font-size: 13px; color: #fbbf24; margin-top: 16px; }
+  .back-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; margin-bottom: 24px; }
+  .vram-widget { background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.15); border-radius: 10px; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; margin-bottom: 24px; }
+  .vram-label { color: var(--muted); }
+  .vram-value { color: var(--green); font-weight: 600; font-size: 16px; }
+
+  @media(max-width:700px) { .agents-grid{grid-template-columns:1fr} .report-grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🔬</div>
+      <div>
+        <h1>Autonomous Oncology Board</h1>
+        <p>Multi-Agent AI Tumour Board</p>
+      </div>
+    </div>
+    <span class="badge">AMD MI300X · ROCm</span>
+  </header>
+
+  <!-- UPLOAD -->
+  <div id="upload-section">
+    <div class="upload-hero">
+      <h2>AI-Powered Tumour Board</h2>
+      <p>Upload histopathology patches. Three AI agents collaborate to produce a complete Patient Management Plan.</p>
+      <span class="hw-badge">⚡ Running on AMD Instinct MI300X · 192 GB HBM3 · No NVIDIA Hardware</span>
+    </div>
+    <div class="drop-zone" id="drop-zone">
+      <div class="icon">🧫</div>
+      <h3>Drop pathology image patches here</h3>
+      <p>PNG, JPG accepted · Multiple patches recommended</p>
+      <div class="patch-preview" id="patch-preview"></div>
+    </div>
+    <input type="file" id="file-input" multiple accept="image/*">
+    <button class="btn" id="analyze-btn" disabled>Start Tumour Board Analysis</button>
+    <button class="demo-btn" id="demo-btn">⚡ Run Demo with Sample Patches</button>
+  </div>
+
+  <!-- BOARD -->
+  <div id="board-section">
+    <div class="board-header">
+      <h2>Tumour Board in Session</h2>
+      <p id="board-subtitle">Three AI agents are collaborating on your case...</p>
+    </div>
+    <div class="agents-grid">
+      <div class="agent-card" id="card-pathologist">
+        <div class="agent-icon">🔬</div>
+        <div class="agent-name">Pathologist</div>
+        <div class="agent-model">Prov-GigaPath · ViT-Giant · 1.1B params</div>
+        <div class="agent-status" id="status-pathologist">Waiting...</div>
+      </div>
+      <div class="agent-card" id="card-researcher">
+        <div class="agent-icon">📚</div>
+        <div class="agent-name">Researcher</div>
+        <div class="agent-model">RAG · NCCN Guidelines · TCGA Studies</div>
+        <div class="agent-status" id="status-researcher">Waiting...</div>
+      </div>
+      <div class="agent-card" id="card-oncologist">
+        <div class="agent-icon">🩺</div>
+        <div class="agent-name">Oncologist</div>
+        <div class="agent-model">Llama 3.3 70B · ROCm · Ollama</div>
+        <div class="agent-status" id="status-oncologist">Waiting...</div>
+      </div>
+    </div>
+    <div class="steps-feed" id="steps-feed">
+      <div class="step-item"><span class="step-agent">system</span>Waiting for pipeline to start...</div>
+    </div>
+  </div>
+
+  <!-- REPORT -->
+  <div id="report-section">
+    <button class="back-btn" id="back-btn">← New Case</button>
+    <div class="vram-widget">
+      <span class="vram-label">⚡ AMD MI300X VRAM — Both Models Resident</span>
+      <span class="vram-value" id="vram-reading">~88 GB / 192 GB used</span>
+    </div>
+    <div class="report-header">
+      <h2 id="report-title">Patient Management Plan</h2>
+      <div class="report-meta" id="report-meta"></div>
+    </div>
+    <div class="report-grid" id="report-grid"></div>
+    <div class="disclaimer">⚠️ This output is generated by an AI research tool and is NOT for clinical use. Always consult a qualified oncologist.</div>
+  </div>
+</div>
+
+<script>
+  const API = window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`;
+  let jobId = null;
+  let files = [];
+
+  // ── Upload ──────────────────────────────────────────────────────
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const analyzeBtn = document.getElementById('analyze-btn');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+  function handleFiles(fileList) {
+    files = Array.from(fileList);
+    const preview = document.getElementById('patch-preview');
+    preview.innerHTML = '';
+    files.slice(0, 8).forEach(f => {
+      const img = document.createElement('img');
+      img.className = 'patch-thumb';
+      img.src = URL.createObjectURL(f);
+      preview.appendChild(img);
+    });
+    analyzeBtn.disabled = files.length === 0;
+    analyzeBtn.textContent = `Start Tumour Board Analysis (${files.length} patches)`;
+  }
+
+  document.getElementById('demo-btn').addEventListener('click', () => runAnalysis(null));
+  analyzeBtn.addEventListener('click', () => runAnalysis(files));
+
+  // ── Run Analysis ────────────────────────────────────────────────
+  async function runAnalysis(userFiles) {
+    document.getElementById('upload-section').style.display = 'none';
+    document.getElementById('board-section').style.display = 'block';
+
+    let patches_b64 = [];
+    if (userFiles && userFiles.length > 0) {
+      patches_b64 = await Promise.all(userFiles.map(f => fileToB64(f)));
+    } else {
+      // Demo: generate random colored squares as dummy patches
+      patches_b64 = Array(4).fill(null).map(() => makeDummyPatch());
+    }
+
+    try {
+      const resp = await fetch(`${API}/analyze`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ patches_b64, case_id: `case_${Date.now()}` })
+      });
+      const data = await resp.json();
+      jobId = data.job_id;
+      pollStatus(jobId);
+      streamEvents(jobId);
+    } catch(e) {
+      addStep('system', `❌ API Error: ${e.message}. Is the server running?`);
+    }
+  }
+
+  function fileToB64(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function makeDummyPatch() {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 224;
+    const ctx = canvas.getContext('2d');
+    // Pink/purple tissue-like colors
+    const colors = ['#c0688a','#d4a0b5','#8b3a6b','#e8c4d5','#a05070'];
+    for(let i=0;i<200;i++){
+      ctx.fillStyle = colors[Math.floor(Math.random()*colors.length)];
+      ctx.globalAlpha = 0.4 + Math.random()*0.5;
+      ctx.beginPath();
+      ctx.arc(Math.random()*224, Math.random()*224, 2+Math.random()*8, 0, Math.PI*2);
+      ctx.fill();
+    }
+    return canvas.toDataURL('image/jpeg',0.8).split(',')[1];
+  }
+
+  // ── SSE Stream ──────────────────────────────────────────────────
+  function streamEvents(jid) {
+    const es = new EventSource(`${API}/stream/${jid}`);
+    es.onmessage = e => {
+      const step = JSON.parse(e.data);
+      updateAgentCard(step.agent, step.message, step.progress);
+      addStep(step.agent, step.message);
+    };
+    es.addEventListener('done', e => {
+      es.close();
+      const data = JSON.parse(e.data);
+      if(data.status === 'done') setTimeout(() => fetchReport(jid), 800);
+    });
+    es.onerror = () => es.close();
+  }
+
+  function updateAgentCard(agent, message, progress) {
+    const cardMap = {pathologist:'card-pathologist', researcher:'card-researcher', oncologist:'card-oncologist', system:null};
+    const statusMap = {pathologist:'status-pathologist', researcher:'status-researcher', oncologist:'status-oncologist'};
+    if(agent === 'system') return;
+    const card = document.getElementById(cardMap[agent]);
+    const statusEl = document.getElementById(statusMap[agent]);
+    if(!card) return;
+    if(progress >= 100) {
+      card.className = 'agent-card done';
+      statusEl.className = 'agent-status done';
+      statusEl.innerHTML = `✅ ${message}`;
+    } else {
+      card.className = 'agent-card active';
+      statusEl.className = 'agent-status running';
+      statusEl.innerHTML = `<span class="pulse"></span>${message}`;
+    }
+  }
+
+  function addStep(agent, message) {
+    const feed = document.getElementById('steps-feed');
+    const div = document.createElement('div');
+    div.className = 'step-item';
+    div.innerHTML = `<span class="step-agent">${agent}</span>${message}`;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function pollStatus(jid) {
+    const interval = setInterval(async () => {
+      const r = await fetch(`${API}/status/${jid}`);
+      const s = await r.json();
+      if(s.status === 'done' || s.status === 'failed') clearInterval(interval);
+    }, 3000);
+  }
+
+  // ── Report ──────────────────────────────────────────────────────
+  async function fetchReport(jid) {
+    const r = await fetch(`${API}/report/${jid}`);
+    if(!r.ok) { setTimeout(()=>fetchReport(jid), 2000); return; }
+    const data = await r.json();
+    renderReport(data);
+  }
+
+  function renderReport(data) {
+    document.getElementById('board-section').style.display = 'none';
+    document.getElementById('report-section').style.display = 'block';
+    const plan = data.management_plan;
+    const path = data.pathology_report;
+
+    document.getElementById('report-title').textContent = `Patient Management Plan — ${plan.diagnosis.primary}`;
+    document.getElementById('report-meta').innerHTML =
+      `Case ID: ${plan.case_id} &nbsp;·&nbsp; ${new Date(plan.generated_at).toLocaleString()} &nbsp;·&nbsp; Board confidence: ${Math.round(plan.confidence_score*100)}%`;
+
+    const conf = Math.round(plan.confidence_score * 100);
+    const cards = [
+      { title:'🔬 Diagnosis', html: `<p><strong>${plan.diagnosis.primary}</strong></p><p style="color:var(--muted);font-size:13px;margin-top:4px">${plan.diagnosis.tnm_stage}</p><div class="confidence-bar"><div class="confidence-fill" style="width:${conf}%"></div></div><p style="font-size:12px;color:var(--muted);margin-top:4px">${conf}% diagnostic confidence</p>` },
+      { title:'📋 Patient Summary', html: `<p>${plan.patient_summary}</p>` },
+      { title:'⚡ Immediate Actions', html: `<ul>${(plan.immediate_actions||[]).map(a=>`<li>${a}</li>`).join('')}</ul>` },
+      { title:'💊 Treatment Plan', html: `<p><strong>First-line:</strong> ${plan.treatment_plan.first_line}</p><p style="margin-top:8px;color:var(--muted);font-size:13px">${plan.treatment_plan.rationale}</p>${plan.treatment_plan.alternatives.length?`<p style="margin-top:8px;font-size:13px">Alternatives: ${plan.treatment_plan.alternatives.join('; ')}</p>`:''}` },
+      { title:'🔍 Further Investigations', html: `<ul>${(plan.further_investigations||[]).map(i=>`<li>${i}</li>`).join('')}</ul>` },
+      { title:'👥 MDT Referrals', html: `<ul>${(plan.multidisciplinary_referrals||[]).map(r=>`<li>${r}</li>`).join('')}</ul>` },
+      { title:'📅 Follow-Up', html: `<p>${plan.follow_up}</p>` },
+      { title:'✅ Board Consensus', html: `<p>${plan.board_consensus}</p><div style="margin-top:12px">${(plan.citations||[]).map(c=>`<span class="tag">${c.slice(0,50)}...</span>`).join('')}</div>` },
+    ];
+
+    document.getElementById('report-grid').innerHTML = cards.map(c =>
+      `<div class="report-card"><h3>${c.title}</h3>${c.html}</div>`
+    ).join('');
+  }
+
+  document.getElementById('back-btn').addEventListener('click', () => {
+    document.getElementById('report-section').style.display = 'none';
+    document.getElementById('upload-section').style.display = 'block';
+  });
+</script>
+</body>
+</html>

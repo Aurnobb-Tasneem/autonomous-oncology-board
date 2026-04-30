@@ -1,0 +1,71 @@
+# =============================================================================
+# AOB — ml/requirements.txt
+# =============================================================================
+# Install order matters. See comments.
+#
+# STEP 1: Install ROCm PyTorch FIRST (do NOT use pip install torch directly):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.0
+#
+# STEP 2: Install vLLM ROCm build:
+#   pip install vllm
+#   (On ROCm hosts, vllm wheels are built against HIP — verify with: python -c "import vllm")
+#
+# STEP 3: Install GigaPath (gated HuggingFace model + timm integration):
+#   pip install git+https://github.com/prov-gigapath/prov-gigapath
+#
+# STEP 4: Install the rest of this file:
+#   pip install -r ml/requirements.txt
+# =============================================================================
+
+# --------------------------------------------------------------------------- #
+# Core ML                                                                      #
+# --------------------------------------------------------------------------- #
+# torch          — installed separately via ROCm wheel (see STEP 1)
+# vllm           — installed separately via ROCm wheel (see STEP 2)
+timm>=0.9.16                  # GigaPath uses timm model registry
+openslide-python>=3.4.1       # WSI reading (.svs, .tiff, .ndpi) — Day 5+
+Pillow>=10.0.0                # Image processing
+numpy>=1.24.0
+scipy>=1.11.0
+
+# --------------------------------------------------------------------------- #
+# Vision / Pathology                                                           #
+# --------------------------------------------------------------------------- #
+# prov-gigapath  — installed from source (see STEP 3)
+torchvision>=0.16.0           # Included in ROCm wheel install
+
+# --------------------------------------------------------------------------- #
+# LLM / RAG                                                                   #
+# --------------------------------------------------------------------------- #
+# vllm           — installed separately (see STEP 2)
+sentence-transformers>=2.6.0  # Document embedding for RAG corpus indexing
+qdrant-client>=1.8.0          # Vector DB client (in-process mode)
+transformers>=4.40.0          # Tokenizers, model cards, HF hub
+huggingface-hub>=0.22.0       # Model download, gated model auth
+accelerate>=0.28.0            # Required by some HF model loading paths
+tokenizers>=0.19.0
+
+# --------------------------------------------------------------------------- #
+# Agent Orchestration                                                           #
+# --------------------------------------------------------------------------- #
+crewai>=0.28.0                # Multi-agent framework (fallback: custom state machine)
+crewai-tools>=0.4.0
+
+# --------------------------------------------------------------------------- #
+# API Layer                                                                    #
+# --------------------------------------------------------------------------- #
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.6.0               # Request/response schemas
+python-multipart>=0.0.9       # File upload support (WSI, image patches)
+sse-starlette>=1.8.2          # Server-Sent Events for agent streaming
+
+# --------------------------------------------------------------------------- #
+# Utilities                                                                    #
+# --------------------------------------------------------------------------- #
+python-dotenv>=1.0.0          # .env file loading
+httpx>=0.27.0                 # Async HTTP client (NestJS → FastAPI calls)
+structlog>=24.1.0             # Structured logging
+tqdm>=4.66.0                  # Progress bars for corpus indexing
+click>=8.1.0                  # CLI for index_corpus.py
+rich>=13.7.0                  # Pretty terminal output

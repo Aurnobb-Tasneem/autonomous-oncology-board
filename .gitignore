@@ -1,0 +1,82 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Environment ──────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+*.log.*
+
+# ── ML data (large — do not commit) ──────────────────────────────────────────
+# LC25000 dataset (~1.2 GB)
+ml/data/lc25000/
+ml/data/breakhis/
+ml/data/*.csv
+ml/data/*.json
+
+# Qdrant persisted vector index
+data/qdrant/
+
+# Pre-computed prototype embeddings
+ml/models/prototypes/
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# HuggingFace model cache
+.cache/
+*.cache
+
+# ── Corpus ────────────────────────────────────────────────────────────────────
+# Raw PDFs / large text files (keep seed .txt files, ignore downloads)
+ml/rag/corpus/*.pdf
+ml/rag/corpus/pubmed_*
+ml/rag/corpus/full_*
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+.next/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Keep docker-compose.yml but ignore override files
+docker-compose.override.yml
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
