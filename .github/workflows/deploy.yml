@@ -1,0 +1,47 @@
+name: Deploy to AMD MI300X
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to AMD MI300X
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AMD_HOST }}
+          username: ${{ secrets.AMD_USER }}
+          key: ${{ secrets.AMD_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "==> Pulling latest code..."
+            cd /root/aob
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "==> Syncing code into Docker container..."
+            docker cp /root/aob/ml rocm:/workspace/aob/
+            docker cp /root/aob/scripts rocm:/workspace/aob/
+
+            echo "==> Restarting FastAPI server..."
+            docker exec rocm pkill -f uvicorn || true
+            sleep 2
+            docker exec -d rocm bash -c "
+              cd /workspace/aob &&
+              export PYTHONPATH=/workspace/aob &&
+              export OLLAMA_HOST=http://172.17.0.1:11434 &&
+              export HF_TOKEN=${{ secrets.HF_TOKEN }} &&
+              uvicorn ml.api:app --host 0.0.0.0 --port 8000
+            "
+            sleep 3
+
+            echo "==> Health check..."
+            curl -sf http://localhost:8000/health && echo "DEPLOY OK" || echo "HEALTH CHECK FAILED"
