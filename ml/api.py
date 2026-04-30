@@ -367,6 +367,89 @@ async def list_cases():
     ]
 
 
+@app.get("/heatmaps/{job_id}")
+async def get_heatmaps(job_id: str):
+    """
+    Retrieve GigaPath attention heatmaps for a completed job.
+
+    Returns a list of base64-encoded PNG images — one per patch.
+    High-attention regions are highlighted in red and labeled '⚠ SUSPICIOUS'.
+
+    Returns 202 if still processing, 404 if not found.
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+        return JSONResponse(status_code=202, content={"status": job.status, "message": "Still processing"})
+
+    if job.status == JobStatus.FAILED:
+        raise HTTPException(status_code=500, detail=job.error)
+
+    heatmaps = job.result.heatmaps_b64 if job.result else []
+    return {
+        "job_id": job_id,
+        "case_id": job.case_id,
+        "n_heatmaps": len(heatmaps),
+        "heatmaps_b64": heatmaps,
+        "description": "Base64-encoded PNG overlays. Decode and display as <img src='data:image/png;base64,...'>",
+    }
+
+
+@app.get("/api/vram")
+async def get_vram():
+    """
+    Live VRAM usage from rocm-smi.
+
+    Returns current VRAM consumption by all models on the AMD MI300X.
+    Includes H100 comparison limit (80 GB) for the demo.
+
+    Poll this endpoint every 2 seconds to animate the VRAM dashboard.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["rocm-smi", "--showmeminfo", "vram", "--json"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            import json as _json
+            raw = _json.loads(result.stdout)
+            # rocm-smi JSON format: {"card0": {"VRAM Total Memory (B)": ..., "VRAM Total Used Memory (B)": ...}}
+            card = next(iter(raw.values()), {})
+            total_b = int(card.get("VRAM Total Memory (B)", 0))
+            used_b  = int(card.get("VRAM Total Used Memory (B)", 0))
+            total_gb = round(total_b / 1e9, 1)
+            used_gb  = round(used_b  / 1e9, 1)
+            pct = round(used_gb / total_gb * 100, 1) if total_gb > 0 else 0
+        else:
+            raise RuntimeError(result.stderr)
+
+    except Exception as e:
+        log.warning(f"rocm-smi failed: {e} — returning mock data")
+        # Mock data for local dev / non-AMD hosts
+        used_gb  = 3.6
+        total_gb = 191.7
+        pct      = 1.9
+
+    return {
+        "used_gb":    used_gb,
+        "total_gb":   total_gb,
+        "percent":    pct,
+        "h100_limit_gb": 80.0,   # H100 VRAM ceiling — for comparison bar
+        "exceeds_h100": used_gb > 80.0,
+        "model_breakdown": {
+            "gigapath_gb":  3.2,   # Prov-GigaPath ViT-Giant in Docker
+            "llama_70b_gb": 40.0,  # Llama 3.3 70B via Ollama on host
+            "kv_cache_gb":  max(0.0, round(used_gb - 43.2, 1)),
+        },
+        "hardware": "AMD Instinct MI300X · 192 GB HBM3",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 # ── Dev entrypoint ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn

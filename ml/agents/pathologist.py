@@ -51,6 +51,7 @@ from PIL import Image
 from ml.models.gigapath_loader import (
     load_gigapath,
     embed_patches,
+    extract_attention_heatmap,
     build_transform,
     EMBEDDING_DIM,
 )
@@ -109,6 +110,8 @@ class PathologyReport:
     flags: list[str]
     embedding_stats: EmbeddingStats
     processing_time_s: float
+    # ── Attention heatmaps (populated on demand) ────────────────────────────
+    heatmaps_b64: list[str] = field(default_factory=list)   # base64 PNG per patch
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -398,3 +401,37 @@ class PathologistAgent:
             "mean_abnormality": round(mean_abnorm, 4),
         }
 
+    # ── Attention Heatmaps ────────────────────────────────────────────────────
+    def generate_heatmaps(
+        self,
+        images: list[Image.Image],
+        max_patches: int = 8,
+    ) -> list[str]:
+        """
+        Generate GigaPath attention heatmaps for a set of patches.
+
+        Uses Attention Rollout across all ViT transformer blocks to
+        highlight morphologically suspicious tissue regions in red.
+        High-attention areas are labeled "⚠ SUSPICIOUS".
+
+        Args:
+            images:      List of PIL.Image patches.
+            max_patches: Cap the number of patches to process (prevent OOM).
+
+        Returns:
+            List of base64-encoded PNG strings (one per patch).
+            Returns empty list on failure (graceful degradation).
+        """
+        self._ensure_model_loaded()
+        imgs = images[:max_patches]
+        log.info(f"PathologistAgent: generating attention heatmaps for {len(imgs)} patches")
+
+        patch_tensor = self.preprocess_images(imgs)
+
+        heatmaps = extract_attention_heatmap(
+            model=self._model,
+            patch_tensor=patch_tensor,
+            device=self._device,
+        )
+        log.info(f"PathologistAgent: {len(heatmaps)} heatmaps generated")
+        return heatmaps

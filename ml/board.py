@@ -68,6 +68,7 @@ class BoardResult:
     total_time_s: float
     debate_rounds: list[DebateRound] = field(default_factory=list)
     debate_enabled: bool = False
+    heatmaps_b64: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = {
@@ -75,6 +76,8 @@ class BoardResult:
             "total_time_s": self.total_time_s,
             "debate_enabled": self.debate_enabled,
             "debate_rounds_completed": len(self.debate_rounds),
+            "has_heatmaps": len(self.heatmaps_b64) > 0,
+            "n_heatmaps": len(self.heatmaps_b64),
             "pathology_report": self.pathology_report.to_dict(),
             "research_summary": self.research_summary.to_dict(),
             "management_plan": self.management_plan.to_dict(),
@@ -184,6 +187,14 @@ class AutonomousOncologyBoard:
         if pathology.flags:
             _emit("pathologist", f"⚠️ Flags: {', '.join(pathology.flags)}", 32)
 
+        # Generate attention heatmaps after pathologist completes
+        _emit("pathologist", "Generating attention heatmaps (attention rollout across all ViT blocks)...", 33)
+        heatmaps = self.pathologist.generate_heatmaps(images, max_patches=8)
+        if heatmaps:
+            _emit("pathologist", f"🔥 {len(heatmaps)} attention heatmaps generated — suspicious regions highlighted in red", 35)
+        else:
+            _emit("pathologist", "Heatmap extraction skipped (flash-attn or hook incompatibility)", 34)
+
         # ── Agent 2: Researcher ──────────────────────────────────────────────
         _emit("researcher", "Building clinical query from pathology findings", 35)
         research = self.researcher.research(pathology)
@@ -234,6 +245,7 @@ class AutonomousOncologyBoard:
             total_time_s=total_time,
             debate_rounds=debate_rounds,
             debate_enabled=debate_mode,
+            heatmaps_b64=heatmaps,
         )
 
     # ── Debate Loop ──────────────────────────────────────────────────────────

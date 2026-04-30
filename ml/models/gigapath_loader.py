@@ -130,3 +130,225 @@ def embed_patches(
         embeddings.append(emb.float().cpu())
 
     return torch.cat(embeddings, dim=0)   # (N, 1536)
+
+
+# ── Attention Heatmap Extraction ─────────────────────────────────────────────
+
+def _register_attention_hooks(model: nn.Module) -> tuple[list, list]:
+    """
+    Register forward hooks on all attention blocks to capture attention weights.
+
+    GigaPath is a ViT — each block has an Attention submodule.
+    We hook the softmax output (post-dropout attention matrix).
+
+    Returns:
+        (hook_handles, attention_maps_list)
+    """
+    attention_maps: list[torch.Tensor] = []
+    handles = []
+
+    def _make_hook():
+        def hook(module, input, output):
+            # output is the post-attn_drop tensor (B, num_heads, N, N)
+            # We save a detached CPU copy to avoid VRAM pressure
+            attention_maps.append(output.detach().float().cpu())
+        return hook
+
+    for block in model.blocks:
+        # timm Attention module: attn_drop is applied after softmax
+        # Hook attn_drop to capture the post-softmax attention weights
+        handle = block.attn.attn_drop.register_forward_hook(_make_hook())
+        handles.append(handle)
+
+    return handles, attention_maps
+
+
+def _attention_rollout(
+    attention_maps: list[torch.Tensor],
+    discard_ratio: float = 0.9,
+) -> torch.Tensor:
+    """
+    Attention Rollout (Abnar & Zuidema, 2020) across all transformer layers.
+
+    Recursively multiplies attention matrices through layers to trace
+    how information flows from patch tokens to the [CLS] token.
+
+    Args:
+        attention_maps: List of (1, num_heads, N, N) tensors, one per block.
+        discard_ratio:  Fraction of weakest attentions to zero out per layer.
+
+    Returns:
+        Tensor of shape (num_patches,) — normalised attention score per patch.
+    """
+    num_tokens = attention_maps[0].shape[-1]  # N = 1 + num_patches
+
+    # Start with identity
+    result = torch.eye(num_tokens)
+
+    for attn in attention_maps:
+        # Average across heads: (N, N)
+        attn_avg = attn[0].mean(dim=0)  # (N, N)
+
+        # Add residual connection (identity)
+        attn_avg = attn_avg + torch.eye(num_tokens)
+        attn_avg = attn_avg / attn_avg.sum(dim=-1, keepdim=True)
+
+        # Discard low-attention values (keep only top 1-discard_ratio)
+        flat = attn_avg.view(-1)
+        threshold_val = flat.kthvalue(int(flat.numel() * discard_ratio)).values
+        attn_avg[attn_avg < threshold_val] = 0.0
+
+        # Accumulate rollout
+        result = attn_avg @ result
+
+    # [CLS] token is index 0 — its attention to all patch tokens
+    cls_attention = result[0, 1:]  # shape: (num_patches,)
+    cls_attention = (cls_attention - cls_attention.min()) / (
+        cls_attention.max() - cls_attention.min() + 1e-8
+    )
+    return cls_attention
+
+
+def extract_attention_heatmap(
+    model: nn.Module,
+    patch_tensor: torch.Tensor,
+    device: torch.device,
+) -> list[str]:
+    """
+    Extract GigaPath attention heatmaps for a batch of patches.
+
+    Uses Attention Rollout across all ViT blocks to highlight
+    morphologically "suspicious" tissue regions.
+
+    Args:
+        model:        GigaPath model (from load_gigapath).
+        patch_tensor: Preprocessed patches (N, 3, 224, 224).
+        device:       Device the model lives on.
+
+    Returns:
+        List of N base64-encoded PNG strings — one heatmap overlay per patch.
+        Empty list if extraction fails (graceful degradation).
+    """
+    import base64
+    import io
+    import numpy as np
+
+    try:
+        import torch.nn.functional as F
+        from PIL import Image as PILImage
+
+        # GigaPath patch_size=16 → 14×14 = 196 patches + 1 CLS token
+        grid_size = PATCH_SIZE // 16  # = 14
+
+        heatmap_b64s: list[str] = []
+
+        # Process one patch at a time to accumulate per-patch heatmaps
+        for idx in range(len(patch_tensor)):
+            single = patch_tensor[idx:idx+1].to(device)  # (1, 3, 224, 224)
+
+            # Register hooks
+            handles, attn_maps_collected = _register_attention_hooks(model)
+
+            try:
+                with torch.no_grad():
+                    _ = model(single)
+            finally:
+                for h in handles:
+                    h.remove()
+
+            if not attn_maps_collected:
+                # Fallback: return uniform heatmap
+                heatmap_b64s.append(_uniform_heatmap_b64())
+                continue
+
+            # Attention rollout → (num_patches,) = (196,)
+            patch_scores = _attention_rollout(attn_maps_collected)
+
+            # Reshape to grid (14, 14)
+            score_grid = patch_scores.reshape(grid_size, grid_size).numpy()
+
+            # Upsample to 224×224
+            score_tensor = torch.from_numpy(score_grid).unsqueeze(0).unsqueeze(0)  # (1,1,14,14)
+            score_up = F.interpolate(
+                score_tensor, size=(PATCH_SIZE, PATCH_SIZE), mode="bilinear", align_corners=False
+            ).squeeze().numpy()  # (224, 224)
+
+            # Convert original patch to RGB for overlay
+            orig_rgb = _denormalize_patch(single[0].float().cpu())  # (224, 224, 3) uint8
+
+            # Apply red-to-green colormap
+            heatmap_rgb = _apply_colormap(score_up)  # (224, 224, 3) uint8
+
+            # Alpha blend: 60% original + 40% heatmap
+            blended = (0.60 * orig_rgb.astype(np.float32) +
+                       0.40 * heatmap_rgb.astype(np.float32)).clip(0, 255).astype(np.uint8)
+
+            # Add "SUSPICIOUS" label on high-attention patches
+            suspicion_level = float(score_up.max())
+            if suspicion_level > 0.75:
+                blended = _add_label(blended, "⚠ SUSPICIOUS", color=(255, 60, 60))
+            elif suspicion_level > 0.5:
+                blended = _add_label(blended, "REVIEW", color=(255, 200, 0))
+
+            # Encode to base64 PNG
+            img = PILImage.fromarray(blended)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG", optimize=True)
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            heatmap_b64s.append(b64)
+
+        return heatmap_b64s
+
+    except Exception as e:
+        log.warning(f"GigaPath attention heatmap extraction failed: {e}")
+        return []
+
+
+def _denormalize_patch(tensor: torch.Tensor) -> "np.ndarray":
+    """Convert a normalised (3, 224, 224) patch tensor back to uint8 RGB."""
+    import numpy as np
+    mean = torch.tensor(GIGAPATH_MEAN).view(3, 1, 1)
+    std  = torch.tensor(GIGAPATH_STD).view(3, 1, 1)
+    img  = (tensor * std + mean).clamp(0, 1)
+    return (img.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+
+
+def _apply_colormap(score: "np.ndarray") -> "np.ndarray":
+    """
+    Apply a red-yellow-green colormap to a (H, W) score map in [0, 1].
+    High scores (suspicious) → red. Low scores (normal) → green/blue.
+    """
+    import numpy as np
+    # Custom biomedical colormap: blue (0) → yellow (0.5) → red (1)
+    r = np.clip(2.0 * score,       0, 1)
+    g = np.clip(2.0 * (1 - score), 0, 1) * 0.6
+    b = np.clip(1.0 - 2 * score,   0, 1) * 0.8
+    rgb = np.stack([r, g, b], axis=-1)
+    return (rgb * 255).astype("uint8")
+
+
+def _add_label(img: "np.ndarray", text: str, color: tuple) -> "np.ndarray":
+    """Add a text label to the top-left of an image array."""
+    try:
+        from PIL import Image as PILImage, ImageDraw
+        pil = PILImage.fromarray(img)
+        draw = ImageDraw.Draw(pil)
+        # Semi-transparent background bar
+        draw.rectangle([0, 0, len(text) * 7 + 8, 16], fill=(0, 0, 0))
+        draw.text((4, 2), text, fill=color)
+        return __import__("numpy").array(pil)
+    except Exception:
+        return img
+
+
+def _uniform_heatmap_b64() -> str:
+    """Return a neutral grey heatmap as fallback."""
+    import base64
+    import io
+    import numpy as np
+    from PIL import Image as PILImage
+    arr = np.full((224, 224, 3), 128, dtype=np.uint8)
+    buf = io.BytesIO()
+    PILImage.fromarray(arr).save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
