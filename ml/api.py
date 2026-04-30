@@ -31,6 +31,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
