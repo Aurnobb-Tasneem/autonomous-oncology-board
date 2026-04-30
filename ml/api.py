@@ -367,6 +367,24 @@ async def list_cases():
     ]
 
 
+@app.get("/memory/cases")
+async def list_memory_cases():
+    """
+    List all cases stored in Board Memory.
+
+    Returns metadata for every case the board has processed, sorted
+    newest-first. Centroid vectors are excluded from the response.
+    Useful for auditing the board's institutional memory.
+    """
+    if _board is None:
+        raise HTTPException(status_code=503, detail="Board not initialised yet")
+    cases = _board.memory.list_all()
+    return {
+        "total": len(cases),
+        "cases": cases,
+    }
+
+
 @app.get("/heatmaps/{job_id}")
 async def get_heatmaps(job_id: str):
     """
@@ -448,6 +466,100 @@ async def get_vram():
         "hardware": "AMD Instinct MI300X · 192 GB HBM3",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+
+# ── Demo endpoints ─────────────────────────────────────────────────────────────
+_DEMO_CASES_DIR = Path(__file__).parent.parent / "data" / "demo_cases"
+
+
+@app.get("/demo/cases")
+async def list_demo_cases():
+    """
+    List all available pre-baked demo cases.
+
+    Returns case metadata without the full patch data.
+    Use POST /demo/run/{case_name} to run a demo case through the full pipeline.
+    """
+    if not _DEMO_CASES_DIR.exists():
+        return {"cases": [], "message": "No demo cases directory found"}
+
+    cases = []
+    for json_file in sorted(_DEMO_CASES_DIR.glob("*.json")):
+        try:
+            with open(json_file, encoding="utf-8") as f:
+                data = json.load(f)
+            cases.append({
+                "case_name":    data.get("case_name", json_file.stem),
+                "display_name": data.get("display_name", json_file.stem),
+                "tissue_type":  data.get("tissue_type", "unknown"),
+                "description":  data.get("description", ""),
+                "n_patches":    len(data.get("patches_b64", [])),
+                "metadata":     data.get("metadata", {}),
+            })
+        except Exception as e:
+            log.warning(f"Could not load demo case {json_file}: {e}")
+
+    return {"total": len(cases), "cases": cases}
+
+
+@app.post("/demo/run/{case_name}", response_model=AnalyzeResponse)
+async def run_demo_case(case_name: str, background_tasks: BackgroundTasks):
+    """
+    Run the full AOB pipeline on a pre-baked demo case.
+
+    No image upload needed — patches are loaded from data/demo_cases/{case_name}.json.
+    Returns a job_id immediately; poll /stream/{job_id} or /report/{job_id}.
+
+    Available case names: lung_adenocarcinoma, colon_adenocarcinoma, lung_squamous_cell
+    """
+    if _board is None:
+        raise HTTPException(status_code=503, detail="Board not initialised yet")
+
+    case_file = _DEMO_CASES_DIR / f"{case_name}.json"
+    if not case_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Demo case '{case_name}' not found. "
+                   f"Available: {[f.stem for f in _DEMO_CASES_DIR.glob('*.json')]}"
+        )
+
+    try:
+        with open(case_file, encoding="utf-8") as f:
+            demo_data = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load demo case: {e}")
+
+    patches_b64: list[str] = demo_data.get("patches_b64", [])
+    if not patches_b64:
+        raise HTTPException(status_code=500, detail="Demo case has no patches")
+
+    # Decode patches
+    try:
+        images_bytes = [base64.b64decode(p) for p in patches_b64]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to decode demo patches: {e}")
+
+    # Create and register job
+    case_id = f"demo_{case_name}_{uuid.uuid4().hex[:6]}"
+    job_id  = f"job_{uuid.uuid4().hex[:12]}"
+    job = Job(job_id=job_id, case_id=case_id)
+    _jobs[job_id] = job
+
+    thread = threading.Thread(
+        target=_run_board_job,
+        args=(job, images_bytes),
+        daemon=True,
+        name=f"demo-{job_id}",
+    )
+    thread.start()
+
+    return AnalyzeResponse(
+        job_id=job_id,
+        case_id=case_id,
+        status=JobStatus.QUEUED,
+        message=f"Demo case '{case_name}' queued. Stream: /stream/{job_id}",
+    )
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

@@ -36,6 +36,7 @@ from ml.agents.pathologist import PathologistAgent, PathologyReport
 from ml.agents.researcher import ResearcherAgent, ResearchSummary
 from ml.agents.oncologist import OncologistAgent, ManagementPlan
 from ml.agents.meta_evaluator import MetaEvaluator
+from ml.agents.board_memory import BoardMemory
 from ml.models.llm_client import OllamaClient
 from ml.rag.retriever import OncologyRetriever
 
@@ -142,6 +143,9 @@ class AutonomousOncologyBoard:
         self.oncologist    = OncologistAgent(llm_client=self.llm)
         self.meta_evaluator = MetaEvaluator(llm_client=self.llm)
 
+        # Board memory — persists cases for similar-case retrieval
+        self.memory = BoardMemory()
+
         log.info("AutonomousOncologyBoard: all agents initialised")
 
     # ── Main pipeline ─────────────────────────────────────────────────────────
@@ -204,6 +208,22 @@ class AutonomousOncologyBoard:
                 unc_msg += " ⚠️ HIGH — second-opinion biopsy recommended"
             _emit("pathologist", unc_msg, 38)
 
+        # ── Board Memory: retrieve similar past cases ────────────────────────
+        similar_cases: list[dict] = []
+        if pathology.embedding_stats and pathology.embedding_stats.centroid:
+            similar_cases = self.memory.find_similar(
+                centroid=pathology.embedding_stats.centroid, top_k=3
+            )
+            if similar_cases:
+                _emit(
+                    "system",
+                    f"🗃️ Board Memory: {len(similar_cases)} similar past case(s) retrieved "
+                    f"(top similarity: {similar_cases[0]['similarity']:.0%})",
+                    34,
+                )
+            else:
+                _emit("system", "🗃️ Board Memory: no similar past cases found (first run or cold start)", 34)
+
         # ── Agent 2: Researcher ──────────────────────────────────────────────
         _emit("researcher", "Building clinical query from pathology findings", 35)
         research = self.researcher.research(pathology)
@@ -217,7 +237,7 @@ class AutonomousOncologyBoard:
 
         # ── Agent 3: Oncologist (initial draft) ──────────────────────────────
         _emit("oncologist", "Llama 3.3 70B: synthesising initial management plan...", 60)
-        plan = self.oncologist.synthesise(pathology, research)
+        plan = self.oncologist.synthesise(pathology, research, similar_cases=similar_cases)
         _emit(
             "oncologist",
             f"Initial plan complete — {plan.diagnosis.primary} "
@@ -246,7 +266,7 @@ class AutonomousOncologyBoard:
         _emit("system", final_msg, 100)
         log.info(f"Board: ✅ case '{case_id}' complete in {total_time}s")
 
-        return BoardResult(
+        result = BoardResult(
             case_id=case_id,
             pathology_report=pathology,
             research_summary=research,
@@ -256,6 +276,22 @@ class AutonomousOncologyBoard:
             debate_enabled=debate_mode,
             heatmaps_b64=heatmaps,
         )
+
+        # ── Board Memory: save this case for future similar-case retrieval ───
+        try:
+            self.memory.save_case(
+                case_id=case_id,
+                tissue_type=pathology.tissue_type,
+                confidence=pathology.confidence,
+                centroid=pathology.embedding_stats.centroid,
+                first_line_tx=plan.treatment_plan.first_line,
+                plan_summary=plan.patient_summary,
+                n_patches=pathology.n_patches,
+            )
+        except Exception as mem_err:
+            log.warning(f"Board: failed to save case to memory ({mem_err}) — continuing")
+
+        return result
 
     # ── Debate Loop ──────────────────────────────────────────────────────────
     def _run_debate(

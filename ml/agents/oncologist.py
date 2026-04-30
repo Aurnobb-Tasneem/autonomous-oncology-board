@@ -167,12 +167,27 @@ class OncologistAgent:
         self,
         pathology: PathologyReport,
         research: ResearchSummary,
+        similar_cases: Optional[list[dict]] = None,
     ) -> str:
         tissue = pathology.tissue_type.replace("_", " ").title()
         stage  = TISSUE_STAGE_MAP.get(pathology.tissue_type, "Unknown stage")
         avg_abnorm = sum(p.abnormality_score for p in pathology.patch_findings) / max(len(pathology.patch_findings), 1)
 
         research_brief = research.format_for_oncologist()
+
+        # ── Similar cases block (Board Memory) ────────────────────────────────
+        similar_section = ""
+        if similar_cases:
+            lines = ["=== SIMILAR PAST CASES FROM BOARD MEMORY ==="]
+            for i, case in enumerate(similar_cases, 1):
+                lines.append(
+                    f"[{i}] Case '{case.get('case_id', 'unknown')}' "
+                    f"({case.get('tissue_type', '?').replace('_', ' ').title()}, "
+                    f"similarity {case.get('similarity', 0):.0%}) — "
+                    f"First-line: {case.get('first_line_tx', '?')} | "
+                    f"Summary: {case.get('plan_summary', '')[:120]}"
+                )
+            similar_section = "\n".join(lines) + "\n\n"
 
         return f"""You are chairing an Autonomous Oncology Board meeting.
 
@@ -188,7 +203,7 @@ Flags: {', '.join(pathology.flags) if pathology.flags else 'none'}
 === RESEARCH BRIEF (from AI Researcher using RAG + Oncology Literature) ===
 {research_brief}
 
-=== YOUR TASK ===
+{similar_section}=== YOUR TASK ===
 As the senior oncologist, synthesise the above into a complete Patient Management Plan.
 Return a JSON object with exactly these fields:
 {{
@@ -266,6 +281,7 @@ Return only the JSON. No markdown fences."""
         self,
         pathology_report: PathologyReport,
         research_summary: ResearchSummary,
+        similar_cases: Optional[list[dict]] = None,
     ) -> ManagementPlan:
         """
         Synthesise the final Patient Management Plan.
@@ -273,13 +289,14 @@ Return only the JSON. No markdown fences."""
         Args:
             pathology_report: Output from PathologistAgent.
             research_summary: Output from ResearcherAgent.
+            similar_cases:    Optional list of similar past cases from BoardMemory.
 
         Returns:
             ManagementPlan — the final AOB output.
         """
         log.info(f"OncologistAgent: synthesising case '{pathology_report.case_id}'")
 
-        prompt = self._build_prompt(pathology_report, research_summary)
+        prompt = self._build_prompt(pathology_report, research_summary, similar_cases=similar_cases)
 
         try:
             if self.llm.ping():

@@ -56,6 +56,7 @@ from ml.models.gigapath_loader import (
     EMBEDDING_DIM,
 )
 from ml.agents.uncertainty import mc_dropout_inference, UncertaintyResult
+from ml.agents.biomarker import BiomarkerExtractor
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +119,8 @@ class PathologyReport:
     uncertainty_std: float = 0.0
     high_uncertainty: bool = False
     uncertainty_class_probs: dict = field(default_factory=dict)
+    # ── Biomarker scores (populated during analyse()) ─────────────────────
+    biomarkers: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -306,6 +309,14 @@ class PathologistAgent:
             centroid=centroid.tolist(),
         )
 
+        # ── Step 5b: Biomarker extraction ────────────────────────────────────
+        try:
+            biomarkers = BiomarkerExtractor().extract(emb_stats.centroid)
+            log.info("PathologistAgent: biomarker extraction complete")
+        except Exception as bio_err:
+            log.warning(f"PathologistAgent: biomarker extraction failed ({bio_err}) — skipping")
+            biomarkers = {}
+
         # ── Step 6: Natural language summary ────────────────────────────────
         label = TISSUE_CLASS_LABELS.get(dominant_class, dominant_class)
         pct   = round(overall_confidence * 100, 1)
@@ -334,6 +345,7 @@ class PathologistAgent:
             flags=flags,
             embedding_stats=emb_stats,
             processing_time_s=processing_time,
+            biomarkers=biomarkers,
         )
 
     def analyse_from_paths(

@@ -1,57 +1,86 @@
 # 🔬 Autonomous Oncology Board (AOB)
 
-> **AMD Developer Hackathon 2026** — Multi-agent AI tumour board running on AMD Instinct MI300X
+> **AMD Developer Hackathon 2026** — Multi-agent AI tumour board on AMD Instinct MI300X
 
-[![ROCm](https://img.shields.io/badge/ROCm-6.x-ED1C24?logo=amd)](https://rocm.docs.amd.com)
-[![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi)](https://fastapi.tiangolo.com)
-[![License](https://img.shields.io/badge/License-Hackathon%20Only-lightgrey)](#license)
+[![ROCm](https://img.shields.io/badge/ROCm-6.x-ED1C24?logo=amd&logoColor=white)](https://rocm.docs.amd.com)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![GigaPath](https://img.shields.io/badge/GigaPath-ViT--Giant%201.1B-blueviolet)](https://huggingface.co/prov-gigapath/prov-gigapath)
+[![Llama](https://img.shields.io/badge/Llama%203.3-70B-orange)](https://ollama.com)
+[![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97%20HuggingFace-Space-yellow)](https://huggingface.co/spaces)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
 ---
 
 ## What Is This?
 
-The AOB simulates a **multi-agent medical consensus meeting** — a digital tumour board. Three specialized AI agents collaborate, challenge each other, and produce a structured **Patient Management Plan** from histopathology image patches.
+The AOB simulates a **multi-agent medical consensus meeting** — a digital tumour board. Three specialised AI agents collaborate, challenge each other via a structured debate loop, and produce a complete **Patient Management Plan** from histopathology image patches.
 
 ```
-  Pathology Patches (224×224)
-          │
-          ▼
-  ┌──────────────────┐     ┌──────────────────────┐     ┌────────────────────┐
-  │  AGENT 1         │────▶│  AGENT 2             │────▶│  AGENT 3           │
-  │  Pathologist     │     │  Researcher          │     │  Oncologist        │
-  │                  │     │                      │     │                    │
-  │  Prov-GigaPath   │     │  RAG + Qdrant        │     │  Llama 3.3 70B     │
-  │  ViT-Giant 1.1B  │     │  NCCN / TCGA / NEJM  │     │  via Ollama ROCm   │
-  │                  │     │                      │     │                    │
-  │  → PathologyReport│    │  → ResearchSummary   │     │  → ManagementPlan  │
-  └──────────────────┘     └──────────────────────┘     └────────────────────┘
-          │                        │                              │
-          └────────────────────────┴──── Agent Debate ───────────┘
-                                           │
-                                    Final Report (JSON)
+  Histopathology Patches (224x224 H&E)
+            |
+            v
+  +-----------------------+    +------------------------+    +----------------------+
+  |  AGENT 1              |--->|  AGENT 2               |--->|  AGENT 3             |
+  |  Pathologist          |    |  Researcher            |    |  Oncologist          |
+  |                       |    |                        |    |                      |
+  |  Prov-GigaPath        |    |  RAG + Qdrant          |    |  Llama 3.3 70B       |
+  |  ViT-Giant 1.1B       |    |  NCCN Guidelines       |    |  via Ollama (ROCm)   |
+  |  + Biomarker Layer    |    |  + Board Memory        |    |  + Similar Cases     |
+  |  + MC Dropout         |    |                        |    |                      |
+  |  + Attention Maps     |    |  -> ResearchSummary    |    |  -> ManagementPlan   |
+  +-----------------------+    +------------------------+    +----------------------+
+            |                           |                             |
+            +---------------------------+-------- Agent Debate -------+
+                                                       |
+                                        [up to 3 rounds: challenge -> revise]
+                                                       |
+                                                 Final Report (JSON)
+                                           Consensus score >= 70/100 -> done
 ```
 
 ---
 
 ## Why AMD MI300X?
 
-The 192 GB HBM3 unified VRAM pool makes this specific architecture **physically possible**:
+The 192 GB HBM3 unified VRAM pool makes this architecture **physically impossible on a single H100**:
 
 ```
-Model                      VRAM
-───────────────────────────────────────────
-GigaPath ViT-Giant (FP16)   ~3 GB
-Llama 3.3 70B via Ollama   ~40 GB
-KV Cache + inference        ~45 GB
-───────────────────────────────────────────
-Total (measured Day 1)      88.2 GB  ✅
-Headroom remaining         103.5 GB  ✅
-───────────────────────────────────────────
-H100 VRAM limit              80 GB   ❌ OOM
+Model                            VRAM
+-----------------------------------------
+Prov-GigaPath ViT-Giant (FP16)   ~3.2 GB
+Llama 3.3 70B via Ollama         ~40.0 GB
+KV Cache + inference overhead     ~3.0 GB
+-----------------------------------------
+Total                            ~46.2 GB  OK on MI300X
+-----------------------------------------
+NVIDIA H100 VRAM limit            80.0 GB
+  - After loading Llama 70B:     ~40 GB remaining
+  - GigaPath minimum need:       ~3 GB (fits, but no room for KV cache at scale)
+  - Concurrent cases:            impossible
 ```
 
-> **A single NVIDIA H100 (80 GB) cannot hold the full pipeline.** The MI300X enables zero-compromise dual-model residency with 103 GB to spare — room for concurrent cases.
+> A single H100 cannot hold both models **warm simultaneously** at production scale. The MI300X's 192 GB enables zero-compromise dual-model residency with 145+ GB to spare for concurrent cases.
+
+---
+
+## Features
+
+| Feature | Status | Description |
+|---|---|---|
+| **GigaPath Inference** | Done | 1.1B ViT-Giant, 1536-dim embeddings, FP16 on ROCm |
+| **Tissue Classification** | Done | 5 classes (LC25000), prototype cosine similarity |
+| **Biomarker Layer** | Done | 8 interpretable oncology biomarkers from centroid |
+| **Attention Heatmaps** | Done | Attention rollout across all ViT blocks, red overlay PNGs |
+| **MC Dropout Uncertainty** | Done | 20 stochastic passes, confidence intervals + flags |
+| **NCCN RAG** | Done | Qdrant vector store, evidence retrieval + synthesis |
+| **Agent Debate Loop** | Done | Up to 3 rounds: challenge -> referee -> revise -> MetaEvaluate |
+| **Board Memory** | Done | Cosine-similarity retrieval of similar past cases (JSONL) |
+| **Demo Cases** | Done | 3 pre-baked JSON cases for instant demo without image upload |
+| **VRAM Dashboard** | Done | Live rocm-smi endpoint + H100 comparison |
+| **SSE Streaming** | Done | Real-time agent step events |
+| **Stress Test** | Done | 10 concurrent cases, P50/P95/P99 latency reporting |
+| **HuggingFace Space** | Done | Gradio UI wrapping the live API |
 
 ---
 
@@ -59,12 +88,13 @@ H100 VRAM limit              80 GB   ❌ OOM
 
 | Component | Technology | Notes |
 |---|---|---|
-| **Vision FM** | [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath) | ViT-Giant, 1.1B params, trained on 1.3B pathology tokens |
+| **Vision FM** | [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath) | ViT-Giant, 1.1B params, trained on 1.3B pathology patches |
 | **LLM** | Llama 3.3 70B via [Ollama](https://ollama.com) | ROCm-native, no CUDA binaries |
-| **Vector DB** | [Qdrant](https://qdrant.tech) | In-process, corpus of NCCN/TCGA guidelines |
-| **Embedder** | sentence-transformers/all-MiniLM-L6-v2 | 384-dim for RAG |
-| **API** | FastAPI + SSE streaming | Real-time agent step updates |
-| **Frontend** | Self-contained HTML | Served from FastAPI, no build step |
+| **Vector DB** | [Qdrant](https://qdrant.tech) | In-process, NCCN/TCGA oncology corpus |
+| **Board Memory** | JSONL flat file | Cosine similarity retrieval, 1536-dim centroids |
+| **Biomarkers** | Fixed seeded projections | 8 interpretable scores (no extra model needed) |
+| **API** | FastAPI + SSE | Real-time agent step streaming |
+| **HF Space** | Gradio 4.x | Wraps live API, 3-tab UI |
 | **GPU Runtime** | ROCm 6.x | AMD MI300X, no NVIDIA dependency |
 
 ---
@@ -73,56 +103,50 @@ H100 VRAM limit              80 GB   ❌ OOM
 
 ### Prerequisites
 - AMD MI300X (or compatible ROCm GPU)
-- ROCm 6.x installed on host
-- Docker (for the ML container)
-- Ollama with ROCm support
-- HuggingFace account with [GigaPath access approved](https://huggingface.co/prov-gigapath/prov-gigapath)
+- ROCm 6.x on host, Docker, Ollama with ROCm support
+- HuggingFace account with [GigaPath access](https://huggingface.co/prov-gigapath/prov-gigapath) approved
 
-### 1. Start Ollama + pull Llama 3.3 70B (on HOST)
+### 1. Start Ollama + pull model (on HOST)
 ```bash
 OLLAMA_HOST=0.0.0.0:11434 ollama serve &
 ollama pull llama3.3:70b
-ufw allow from 172.17.0.0/16 to any port 11434   # allow Docker → host
+ufw allow from 172.17.0.0/16 to any port 11434
 ```
 
 ### 2. Enter the ROCm container
 ```bash
 docker exec -it rocm /bin/bash
 cd /workspace/aob
-```
-
-### 3. Install dependencies
-```bash
 pip install -r ml/requirements.txt
 ```
 
-### 4. Set environment variables
+### 3. Configure and start
 ```bash
 cp .env.example .env
-# Edit .env — set HF_TOKEN and OLLAMA_HOST
+# Edit .env: set HF_TOKEN, OLLAMA_HOST
 export $(cat .env | xargs)
-```
-
-### 5. Run the smoke test (validates both models in VRAM)
-```bash
 export PYTHONPATH=/workspace/aob
-python scripts/smoke_test.py
-```
-Expected: `88.2 GB / 191.7 GB used · All checks PASS`
-
-### 6. Index the oncology corpus
-```bash
-python ml/rag/corpus_indexer.py
-```
-
-### 7. Start the API server
-```bash
+python scripts/smoke_test.py          # validate both models in VRAM
 uvicorn ml.api:app --host 0.0.0.0 --port 8000
 ```
 
-### 8. Open the demo UI
+### 4. Run a demo case instantly
+```bash
+# No image upload needed
+curl -X POST http://localhost:8000/demo/run/lung_adenocarcinoma
+# Returns: {"job_id": "job_...", "status": "queued"}
+
+# Then stream live agent steps:
+curl -N http://localhost:8000/stream/<job_id>
+
+# Or fetch the completed report:
+curl http://localhost:8000/report/<job_id>
 ```
-http://<server-ip>:8000
+
+### 5. Stress test (10 concurrent cases)
+```bash
+pip install aiohttp
+python scripts/stress_test.py --host http://localhost:8000 --concurrency 10
 ```
 
 ---
@@ -131,32 +155,31 @@ http://<server-ip>:8000
 
 ```
 aob/
-├── CLAUDE.md                    ← Project bible (AI assistant: read this first)
-├── README.md                    ← This file
-├── .env.example                 ← Environment variable template
-├── docker-compose.yml           ← Local dev orchestration
-│
-├── ml/                          ← Python ML/AI layer
+├── ml/
 │   ├── agents/
-│   │   ├── pathologist.py       ← Agent 1: GigaPath patch inference
-│   │   ├── researcher.py        ← Agent 2: RAG evidence synthesis
-│   │   └── oncologist.py        ← Agent 3: Llama 70B plan synthesis
+│   │   ├── pathologist.py       <- Agent 1: GigaPath + biomarkers + MC dropout + heatmaps
+│   │   ├── researcher.py        <- Agent 2: RAG evidence + challenge()
+│   │   ├── oncologist.py        <- Agent 3: Llama 70B plan synthesis + revise()
+│   │   ├── meta_evaluator.py    <- Debate consensus scorer (0-100)
+│   │   ├── board_memory.py      <- Similar case retrieval (cosine, JSONL)
+│   │   ├── biomarker.py         <- 8 interpretable biomarker scores
+│   │   └── uncertainty.py       <- MC Dropout (20 passes)
 │   ├── models/
-│   │   ├── gigapath_loader.py   ← GigaPath loading + preprocessing
-│   │   └── llm_client.py        ← Ollama REST client wrapper
-│   ├── rag/
-│   │   ├── corpus_indexer.py    ← One-time corpus ingestion → Qdrant
-│   │   ├── retriever.py         ← Qdrant query interface + mock corpus
-│   │   └── corpus/              ← Raw oncology documents (gitignored if large)
-│   ├── static/
-│   │   └── index.html           ← Self-contained demo frontend
-│   ├── board.py                 ← Sequential state machine orchestrating 3 agents
-│   ├── api.py                   ← FastAPI endpoints + SSE streaming
-│   └── requirements.txt
-│
+│   │   ├── gigapath_loader.py   <- GigaPath load + attention rollout
+│   │   └── llm_client.py        <- Ollama REST wrapper
+│   ├── rag/retriever.py         <- Qdrant + NCCN corpus
+│   ├── board.py                 <- Main orchestrator + debate loop
+│   └── api.py                   <- FastAPI endpoints
+├── data/
+│   ├── demo_cases/              <- 3 pre-baked JSON cases
+│   └── board_memory.jsonl       <- Auto-generated case store
+├── hf_space/
+│   ├── app.py                   <- Gradio HuggingFace Space
+│   └── README.md                <- HF Space config
+├── docs/build_in_public/        <- Twitter/X thread drafts
 └── scripts/
-    ├── smoke_test.py            ← Day 1: validates GigaPath + Llama in VRAM together
-    └── vram_monitor.sh          ← Continuous rocm-smi VRAM logger
+    ├── smoke_test.py            <- VRAM validation
+    └── stress_test.py           <- Concurrent load test
 ```
 
 ---
@@ -165,63 +188,42 @@ aob/
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/analyze` | Submit image patches for analysis. Returns `job_id`. |
-| `GET` | `/status/{job_id}` | Poll job status and completed agent steps. |
-| `GET` | `/stream/{job_id}` | SSE stream of live agent step events. |
-| `GET` | `/report/{job_id}` | Retrieve completed `ManagementPlan` JSON. |
-| `GET` | `/health` | Check API + Ollama connectivity. |
-| `GET` | `/` | Serve demo UI. |
-
-### Example: Submit a case
-```python
-import base64, requests
-from PIL import Image
-import io, numpy as np
-
-# Prepare patches
-img = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
-buf = io.BytesIO()
-img.save(buf, format='JPEG')
-b64 = base64.b64encode(buf.getvalue()).decode()
-
-# Submit
-r = requests.post("http://localhost:8000/analyze", json={
-    "case_id": "case_001",
-    "patches_b64": [b64] * 6,
-    "metadata": {"patient_age": 67, "sex": "M", "clinical_notes": "Persistent cough, weight loss"}
-})
-job_id = r.json()["job_id"]
-
-# Stream live updates
-import sseclient
-for event in sseclient.SSEClient(f"http://localhost:8000/stream/{job_id}"):
-    print(event.data)
-```
+| `GET` | `/health` | API + Ollama + board status |
+| `POST` | `/analyze` | Submit image patches -> `job_id` |
+| `GET` | `/stream/{job_id}` | SSE stream of live agent steps |
+| `GET` | `/report/{job_id}` | Complete ManagementPlan JSON |
+| `GET` | `/heatmaps/{job_id}` | Attention heatmap PNGs (base64) |
+| `GET` | `/cases` | List all jobs |
+| `GET` | `/memory/cases` | Board memory — all stored past cases |
+| `GET` | `/api/vram` | Live VRAM from rocm-smi + H100 comparison |
+| `GET` | `/demo/cases` | List available pre-baked demo cases |
+| `POST` | `/demo/run/{case_name}` | Run demo case without image upload |
 
 ---
 
-## Output Schema
+## Output Schema (abbreviated)
 
 ```json
 {
+  "case_id": "case_001",
+  "total_time_s": 187.4,
+  "debate_rounds_completed": 1,
+  "pathology_report": {
+    "tissue_type": "lung_adenocarcinoma",
+    "confidence": 0.87,
+    "biomarkers": {
+      "nuclear_pleomorphism": {"score": 0.73, "level": "High"},
+      "mitotic_index": {"score": 0.61, "level": "Moderate"}
+    },
+    "uncertainty_interval": "87.0% +/- 3.8%"
+  },
   "management_plan": {
-    "case_id": "case_001",
-    "diagnosis": {
-      "primary": "Lung Adenocarcinoma",
-      "tnm_stage": "Stage IV NSCLC — pending molecular workup",
-      "confidence": 0.85
-    },
-    "immediate_actions": ["Order EGFR mutation testing", "..."],
+    "diagnosis": {"primary": "Lung Adenocarcinoma", "tnm_stage": "Stage IV NSCLC"},
     "treatment_plan": {
-      "first_line": "Osimertinib 80mg/day (EGFR-mutant) or Pembrolizumab 200mg Q3W (PD-L1 ≥50%)",
-      "rationale": "Based on NCCN Category 1 evidence...",
-      "alternatives": ["Alectinib 600mg BID for ALK-positive", "..."]
+      "first_line": "EGFR/ALK/ROS1 panel FIRST -> osimertinib if EGFR+ / pembrolizumab if PD-L1 >=50%",
+      "rationale": "NCCN Category 1 evidence for targeted therapy in driver-mutation positive NSCLC"
     },
-    "citations": [
-      "NCCN Clinical Practice Guidelines in Oncology: NSCLC v4.2024",
-      "Reck M, et al. N Engl J Med 2016;375:1823-1833."
-    ],
-    "disclaimer": "AI research tool. NOT for clinical use."
+    "consensus_score": 82
   }
 }
 ```
@@ -230,17 +232,14 @@ for event in sseclient.SSEClient(f"http://localhost:8000/stream/{job_id}"):
 
 ## Disclaimer
 
-This project is a research demonstration built for the AMD Developer Hackathon 2026.
+Research demonstration for AMD Developer Hackathon 2026.
 
-**It is NOT a medical device and NOT approved for clinical use.** All outputs are generated by AI models and must not be used for actual patient diagnosis or treatment decisions. Always consult a qualified oncologist.
+**NOT a medical device. NOT for clinical use.** All outputs are AI-generated and must not be used for actual patient diagnosis or treatment decisions. Always consult a qualified oncologist.
 
 ---
 
 ## License
 
-Copyright 2026 **Aurnobb Tasneem**
+Copyright 2026 **Aurnobb Tasneem** · [Apache License 2.0](LICENSE)
 
-Licensed under the [Apache License 2.0](LICENSE).
-
-> **Commercial use of this software requires written permission from the author.**
-> Contact: taurnobb@gmail.com
+> Commercial use requires written permission. Contact: taurnobb@gmail.com
