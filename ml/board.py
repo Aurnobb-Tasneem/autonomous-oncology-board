@@ -195,6 +195,15 @@ class AutonomousOncologyBoard:
         else:
             _emit("pathologist", "Heatmap extraction skipped (flash-attn or hook incompatibility)", 34)
 
+        # MC Dropout uncertainty quantification
+        _emit("pathologist", f"Running MC Dropout uncertainty quantification (20 stochastic passes)...", 36)
+        pathology = self.pathologist.quantify_uncertainty(pathology, images)
+        if pathology.uncertainty_interval:
+            unc_msg = f"Uncertainty: {pathology.uncertainty_interval}"
+            if pathology.high_uncertainty:
+                unc_msg += " ⚠️ HIGH — second-opinion biopsy recommended"
+            _emit("pathologist", unc_msg, 38)
+
         # ── Agent 2: Researcher ──────────────────────────────────────────────
         _emit("researcher", "Building clinical query from pathology findings", 35)
         research = self.researcher.research(pathology)

@@ -55,6 +55,7 @@ from ml.models.gigapath_loader import (
     build_transform,
     EMBEDDING_DIM,
 )
+from ml.agents.uncertainty import mc_dropout_inference, UncertaintyResult
 
 log = logging.getLogger(__name__)
 
@@ -111,7 +112,12 @@ class PathologyReport:
     embedding_stats: EmbeddingStats
     processing_time_s: float
     # ── Attention heatmaps (populated on demand) ────────────────────────────
-    heatmaps_b64: list[str] = field(default_factory=list)   # base64 PNG per patch
+    heatmaps_b64: list[str] = field(default_factory=list)
+    # ── MC Dropout uncertainty (populated if uncertainty_mode=True) ─────────
+    uncertainty_interval: str = ""          # e.g. "91.2% ± 4.2%"
+    uncertainty_std: float = 0.0
+    high_uncertainty: bool = False
+    uncertainty_class_probs: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -340,7 +346,71 @@ class PathologistAgent:
         images = [Image.open(str(p)).convert("RGB") for p in image_paths]
         return self.analyse(case_id, images, batch_size=batch_size)
 
-    # ── Agent Debate: Referee method ──────────────────────────────────────────
+    # ── MC Dropout Uncertainty ────────────────────────────────────────────────
+    def quantify_uncertainty(
+        self,
+        report: PathologyReport,
+        images: list[Image.Image],
+        n_passes: int = 20,
+    ) -> PathologyReport:
+        """
+        Run Monte Carlo Dropout uncertainty quantification on a completed report.
+
+        Augments the PathologyReport with uncertainty_interval, uncertainty_std,
+        high_uncertainty, and uncertainty_class_probs fields.
+
+        When high_uncertainty=True, the Oncologist will auto-flag:
+        "⚠️ High diagnostic uncertainty — recommend second-opinion biopsy"
+
+        Args:
+            report:   The PathologyReport from analyse().
+            images:   The same images passed to analyse().
+            n_passes: Number of MC dropout passes (default 20).
+
+        Returns:
+            Updated PathologyReport with uncertainty fields populated.
+        """
+        self._ensure_model_loaded()
+        log.info(f"PathologistAgent: running MC Dropout ({n_passes} passes)")
+
+        patch_tensor = self.preprocess_images(images)
+
+        try:
+            unc = mc_dropout_inference(
+                model=self._model,
+                patch_tensor=patch_tensor,
+                device=self._device,
+                prototypes=self._prototypes,
+                tissue_classes=TISSUE_CLASSES,
+                n_passes=n_passes,
+            )
+
+            # Update report fields (dataclasses are mutable)
+            report.uncertainty_interval = unc.uncertainty_interval
+            report.uncertainty_std       = unc.std_confidence
+            report.high_uncertainty      = unc.high_uncertainty
+            report.uncertainty_class_probs = unc.class_probabilities
+
+            # Add uncertainty flag
+            if unc.high_uncertainty and "high_diagnostic_uncertainty" not in report.flags:
+                report.flags.append("high_diagnostic_uncertainty")
+                report.summary += (
+                    f" ⚠️ High diagnostic uncertainty detected "
+                    f"({unc.uncertainty_interval}) — recommend second-opinion biopsy."
+                )
+
+            log.info(
+                f"PathologistAgent: uncertainty = {unc.uncertainty_interval}, "
+                f"high={unc.high_uncertainty}"
+            )
+
+        except Exception as e:
+            log.warning(f"PathologistAgent: MC Dropout failed ({e}) — skipping uncertainty")
+            report.uncertainty_interval = "N/A (uncertainty estimation failed)"
+
+        return report
+
+
     def referee(
         self,
         original_report: PathologyReport,
