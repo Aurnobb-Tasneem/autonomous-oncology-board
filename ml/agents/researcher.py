@@ -217,7 +217,7 @@ class ResearcherAgent:
         status_lines = []
         if biomarker_status:
             for key, value in biomarker_status.items():
-            status_lines.append(f"- {key}: {value}")
+                status_lines.append(f"- {key}: {value}")
 
         biomarker_status_block = "\n".join(status_lines) if status_lines else "none"
 
