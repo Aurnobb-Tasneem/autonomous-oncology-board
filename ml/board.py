@@ -37,6 +37,7 @@ from ml.agents.researcher import ResearcherAgent, ResearchSummary
 from ml.agents.oncologist import OncologistAgent, ManagementPlan
 from ml.agents.meta_evaluator import MetaEvaluator
 from ml.agents.board_memory import BoardMemory
+from ml.agents.digital_twin import simulate_pfs
 from ml.models.llm_client import OllamaClient
 from ml.rag.retriever import OncologyRetriever
 
@@ -155,6 +156,7 @@ class AutonomousOncologyBoard:
         images: list[Image.Image],
         batch_size: int = 16,
         debate_mode: bool = True,
+        metadata: Optional[dict] = None,
         step_callback: Optional[StepCallback] = None,
     ) -> BoardResult:
         """
@@ -226,7 +228,7 @@ class AutonomousOncologyBoard:
 
         # ── Agent 2: Researcher ──────────────────────────────────────────────
         _emit("researcher", "Building clinical query from pathology findings", 35)
-        research = self.researcher.research(pathology)
+        research = self.researcher.research(pathology, metadata=metadata)
         _emit(
             "researcher",
             f"Retrieved {research.raw_evidence.get('n_retrieved', 0)} evidence documents "
@@ -237,7 +239,12 @@ class AutonomousOncologyBoard:
 
         # ── Agent 3: Oncologist (initial draft) ──────────────────────────────
         _emit("oncologist", "Llama 3.3 70B: synthesising initial management plan...", 60)
-        plan = self.oncologist.synthesise(pathology, research, similar_cases=similar_cases)
+        plan = self.oncologist.synthesise(
+            pathology,
+            research,
+            similar_cases=similar_cases,
+            metadata=metadata,
+        )
         _emit(
             "oncologist",
             f"Initial plan complete — {plan.diagnosis.primary} "
@@ -256,6 +263,14 @@ class AutonomousOncologyBoard:
                 research=research,
                 emit=_emit,
             )
+
+        # ── Digital Twin: 12-month PFS prediction ─────────────────────────
+        _emit("system", "Digital Twin: simulating 12-month PFS curve...", 90)
+        pfs = simulate_pfs(pathology.tissue_type)
+        plan.pfs_12mo = pfs.pfs_12mo
+        plan.pfs_curve = pfs.curve_points
+        plan.pfs_model = pfs.model
+        plan.pfs_assumptions = pfs.assumptions
 
         total_time = round(time.perf_counter() - t0, 2)
 
@@ -463,7 +478,14 @@ class AutonomousOncologyBoard:
         image_paths: list[Path | str],
         batch_size: int = 16,
         debate_mode: bool = True,
+        metadata: Optional[dict] = None,
     ) -> BoardResult:
         """Convenience wrapper — load images from file paths then run."""
         images = [Image.open(str(p)).convert("RGB") for p in image_paths]
-        return self.run(case_id, images, batch_size=batch_size, debate_mode=debate_mode)
+        return self.run(
+            case_id,
+            images,
+            batch_size=batch_size,
+            debate_mode=debate_mode,
+            metadata=metadata,
+        )

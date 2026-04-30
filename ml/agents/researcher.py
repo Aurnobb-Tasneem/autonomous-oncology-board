@@ -68,6 +68,8 @@ class ResearchSummary:
     key_findings: list[str]
     recommended_tests: list[str]
     treatment_options: list[TreatmentOption]
+    biomarker_requirements: list[dict]
+    gated_treatments: list[dict]
     citations: list[str]
     evidence_quality: str
     raw_evidence: dict
@@ -90,6 +92,21 @@ class ResearchSummary:
         lines.append("\nRECOMMENDED MOLECULAR TESTS:")
         for test in self.recommended_tests:
             lines.append(f"  • {test}")
+
+        if self.biomarker_requirements:
+            lines.append("\nBIOMARKER REQUIREMENTS (GATING):")
+            for req in self.biomarker_requirements:
+                biomarker = req.get("biomarker", "")
+                status = req.get("status", "unknown")
+                action = req.get("action", "")
+                lines.append(f"  • {biomarker} — status: {status}. {action}")
+
+        if self.gated_treatments:
+            lines.append("\nGATED TREATMENTS:")
+            for gate in self.gated_treatments:
+                regimen = gate.get("regimen", "")
+                rule = gate.get("gate", "")
+                lines.append(f"  • {regimen} — {rule}")
 
         lines.append("\nTREATMENT OPTIONS:")
         for opt in self.treatment_options:
@@ -134,8 +151,61 @@ class ResearcherAgent:
             f"staging guidelines, prognosis. Flags: {flags}."
         )
 
+    def _normalise_biomarker_status(self, status: str) -> str:
+        """Normalise biomarker status values to positive/negative/unknown."""
+        if not status:
+            return "unknown"
+        val = str(status).strip().lower()
+        if val in {"pos", "positive", "mutant", "mutated"}:
+            return "positive"
+        if val in {"neg", "negative", "wildtype", "wt", "wild-type"}:
+            return "negative"
+        return "unknown"
+
+    def _extract_biomarker_status(self, metadata: Optional[dict]) -> dict[str, str]:
+        """Extract biomarker status map from metadata."""
+        if not metadata:
+            return {}
+
+        status_map: dict[str, str] = {}
+
+        # Preferred: metadata["biomarker_status"] = {"EGFR": "positive", ...}
+        raw = metadata.get("biomarker_status") if isinstance(metadata, dict) else None
+        if isinstance(raw, dict):
+            for key, value in raw.items():
+                if key:
+                    status_map[str(key).upper()] = self._normalise_biomarker_status(value)
+
+        # Fallbacks: egfr_status / alk_status
+        for key in ("egfr_status", "alk_status"):
+            if key in metadata:
+                status_map[key.split("_")[0].upper()] = self._normalise_biomarker_status(metadata.get(key))
+
+        return status_map
+
+    def _apply_biomarker_statuses(self, requirements: list[dict], status_map: dict[str, str]) -> list[dict]:
+        """Apply known biomarker statuses to the requirements list."""
+        if not requirements or not status_map:
+            return requirements
+
+        for req in requirements:
+            biomarker = str(req.get("biomarker", "")).strip()
+            if not biomarker:
+                continue
+            key = biomarker.replace(" ", "").replace("-", "").upper()
+            status = status_map.get(key)
+            if status:
+                req["status"] = status
+                if status != "unknown":
+                    req["action"] = "Status provided in metadata; gate therapy accordingly."
+
+        return requirements
+
     def _synthesise_with_llm(
-        self, report: PathologyReport, evidence: EvidenceBundle
+        self,
+        report: PathologyReport,
+        evidence: EvidenceBundle,
+        biomarker_status: Optional[dict[str, str]] = None,
     ) -> dict:
         """
         Use Llama 3.3 70B to synthesise evidence into structured JSON.
@@ -144,6 +214,13 @@ class ResearcherAgent:
         tissue = report.tissue_type.replace("_", " ").title()
         evidence_text = evidence.format_for_llm()
 
+        status_lines = []
+        if biomarker_status:
+            for key, value in biomarker_status.items():
+            status_lines.append(f"- {key}: {value}")
+
+        biomarker_status_block = "\n".join(status_lines) if status_lines else "none"
+
         prompt = f"""You are analysing a pathology case.
 
 PATHOLOGY REPORT SUMMARY:
@@ -151,6 +228,9 @@ PATHOLOGY REPORT SUMMARY:
 Tissue type: {tissue}
 Abnormality score: {sum(p.abnormality_score for p in report.patch_findings) / len(report.patch_findings):.2f}
 Flags: {', '.join(report.flags) if report.flags else 'none'}
+
+    KNOWN BIOMARKER STATUS (from metadata):
+    {biomarker_status_block}
 
 RETRIEVED EVIDENCE:
 {evidence_text}
@@ -163,6 +243,12 @@ Based on the above, produce a JSON object with exactly these fields:
     {{"line": "First-line", "regimen": "...", "evidence_level": "NCCN Category 1", "citation": "..."}},
     {{"line": "Second-line", "regimen": "...", "evidence_level": "Phase III", "citation": "..."}}
   ],
+    "biomarker_requirements": [
+        {{"biomarker": "EGFR", "status": "unknown", "action": "Order EGFR testing before EGFR TKI."}}
+    ],
+    "gated_treatments": [
+        {{"regimen": "Osimertinib", "gate": "ONLY if EGFR-mutant; otherwise do not use."}}
+    ],
   "citations": ["citation 1", "citation 2"],
   "evidence_quality": "High"
 }}
@@ -211,6 +297,8 @@ Return only the JSON object. No markdown, no explanation."""
                     "citation": docs[0].citation if docs else "",
                 }
             ],
+            "biomarker_requirements": self._default_biomarker_requirements(evidence.tissue_type),
+            "gated_treatments": self._default_gated_treatments(evidence.tissue_type, [docs[0].title] if docs else []),
             "citations": [d.citation for d in docs if d.citation],
             "evidence_quality": "High" if len(docs) >= 3 else "Moderate",
         }
@@ -226,10 +314,50 @@ Return only the JSON object. No markdown, no explanation."""
         }
         return tests.get(tissue_type, ["Histopathology review", "IHC panel"])
 
+    def _default_biomarker_requirements(self, tissue_type: str) -> list[dict]:
+        """Default biomarker gating requirements when LLM is unavailable."""
+        if tissue_type == "lung_adenocarcinoma":
+            biomarkers = ["EGFR", "ALK", "ROS1", "BRAF", "KRAS", "MET", "RET", "NTRK", "PD-L1"]
+        elif tissue_type == "lung_squamous_cell_carcinoma":
+            biomarkers = ["PD-L1", "FGFR1", "EGFR (rare)"]
+        elif tissue_type == "colon_adenocarcinoma":
+            biomarkers = ["MSI/MMR", "KRAS/NRAS", "BRAF", "HER2", "NTRK"]
+        else:
+            biomarkers = ["IHC panel"]
+
+        return [
+            {
+                "biomarker": b,
+                "status": "unknown",
+                "action": f"Order {b} testing before biomarker-linked therapy.",
+            }
+            for b in biomarkers
+        ]
+
+    def _default_gated_treatments(self, tissue_type: str, regimens: list[str]) -> list[dict]:
+        """Infer simple treatment gating rules from regimen names."""
+        rules = []
+        for regimen in regimens:
+            low = regimen.lower()
+            if "osimertinib" in low:
+                rules.append({"regimen": regimen, "gate": "ONLY if EGFR-mutant (exon 19 del or L858R)."})
+            elif "alectinib" in low:
+                rules.append({"regimen": regimen, "gate": "ONLY if ALK-positive."})
+            elif "crizotinib" in low:
+                rules.append({"regimen": regimen, "gate": "ONLY if ALK- or ROS1-positive."})
+            elif "pembrolizumab" in low and "colon" in tissue_type:
+                rules.append({"regimen": regimen, "gate": "ONLY if MSI-H/dMMR."})
+            elif "pembrolizumab" in low and "lung" in tissue_type:
+                rules.append({"regimen": regimen, "gate": "ONLY if PD-L1 high (>=50%) or per NCCN."})
+            elif "cetuximab" in low or "panitumumab" in low:
+                rules.append({"regimen": regimen, "gate": "ONLY if KRAS/NRAS wild-type."})
+        return rules
+
     # ── Main ──────────────────────────────────────────────────────────────────
     def research(
         self,
         pathology_report: PathologyReport,
+        metadata: Optional[dict] = None,
     ) -> ResearchSummary:
         """
         Run evidence retrieval and synthesis for a pathology case.
@@ -257,7 +385,15 @@ Return only the JSON object. No markdown, no explanation."""
         log.info(f"ResearcherAgent: retrieved {evidence.n_retrieved} documents")
 
         # ── Step 3: Synthesise with LLM ──────────────────────────────────────
-        synthesis = self._synthesise_with_llm(pathology_report, evidence)
+        biomarker_status = self._extract_biomarker_status(metadata)
+        synthesis = self._synthesise_with_llm(pathology_report, evidence, biomarker_status=biomarker_status)
+
+        if not synthesis.get("biomarker_requirements"):
+            synthesis["biomarker_requirements"] = self._default_biomarker_requirements(pathology_report.tissue_type)
+
+        if not synthesis.get("gated_treatments"):
+            regimen_list = [t.get("regimen", "") for t in synthesis.get("treatment_options", []) if t.get("regimen")]
+            synthesis["gated_treatments"] = self._default_gated_treatments(pathology_report.tissue_type, regimen_list)
 
         # ── Step 4: Build ResearchSummary ────────────────────────────────────
         treatment_options = [
@@ -270,6 +406,11 @@ Return only the JSON object. No markdown, no explanation."""
             for t in synthesis.get("treatment_options", [])
         ]
 
+        synthesis["biomarker_requirements"] = self._apply_biomarker_statuses(
+            synthesis.get("biomarker_requirements", []),
+            biomarker_status,
+        )
+
         summary = ResearchSummary(
             case_id=pathology_report.case_id,
             tissue_type=pathology_report.tissue_type,
@@ -277,6 +418,8 @@ Return only the JSON object. No markdown, no explanation."""
             key_findings=synthesis.get("key_findings", []),
             recommended_tests=synthesis.get("recommended_tests", []),
             treatment_options=treatment_options,
+            biomarker_requirements=synthesis.get("biomarker_requirements", self._default_biomarker_requirements(pathology_report.tissue_type)),
+            gated_treatments=synthesis.get("gated_treatments", []),
             citations=synthesis.get("citations", []),
             evidence_quality=synthesis.get("evidence_quality", "Moderate"),
             raw_evidence=evidence.to_dict(),

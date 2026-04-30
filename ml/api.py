@@ -171,7 +171,7 @@ class JobStatusResponse(BaseModel):
 
 
 # ── Background worker ────────────────────────────────────────────────────────
-def _run_board_job(job: Job, images_bytes: list[bytes]):
+def _run_board_job(job: Job, images_bytes: list[bytes], metadata: dict):
     """Runs the AOB pipeline in a background thread, emitting steps via SSE."""
     from PIL import Image
 
@@ -193,6 +193,7 @@ def _run_board_job(job: Job, images_bytes: list[bytes]):
             images=images,
             debate_mode=True,
             step_callback=step_cb,
+            metadata=metadata,
         )
 
         job.result = result
@@ -259,7 +260,7 @@ async def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     # Run in background thread (not async — GigaPath/Ollama are sync)
     thread = threading.Thread(
         target=_run_board_job,
-        args=(job, images_bytes),
+        args=(job, images_bytes, request.metadata),
         daemon=True,
         name=f"board-{job_id}",
     )
@@ -548,7 +549,7 @@ async def run_demo_case(case_name: str, background_tasks: BackgroundTasks):
 
     thread = threading.Thread(
         target=_run_board_job,
-        args=(job, images_bytes),
+        args=(job, images_bytes, demo_data.get("metadata", {})),
         daemon=True,
         name=f"demo-{job_id}",
     )

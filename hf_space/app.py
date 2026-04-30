@@ -172,7 +172,14 @@ def run_demo_case(case_name: str) -> tuple[str, str, str]:
     return status_text, "\n".join(log_lines), json.dumps(report_data, indent=2)
 
 
-def run_custom_case(images: list, patient_age: int, sex: str, clinical_notes: str) -> tuple[str, str, str]:
+def run_custom_case(
+    images: list,
+    patient_age: int,
+    sex: str,
+    clinical_notes: str,
+    egfr_status: str,
+    alk_status: str,
+) -> tuple[str, str, str]:
     """
     Run the pipeline on uploaded image patches.
 
@@ -204,6 +211,10 @@ def run_custom_case(images: list, patient_age: int, sex: str, clinical_notes: st
             "patient_age": patient_age,
             "sex": sex,
             "clinical_notes": clinical_notes,
+            "biomarker_status": {
+                "EGFR": egfr_status,
+                "ALK": alk_status,
+            },
         },
     }
 
@@ -313,6 +324,8 @@ def build_ui() -> gr.Blocks:
                         age_input   = gr.Slider(18, 100, value=65, label="Patient Age", step=1)
                         sex_input   = gr.Radio(["M", "F", "Other"], value="M", label="Sex")
                         notes_input = gr.Textbox(label="Clinical Notes", placeholder="e.g. Peripheral lung mass, non-smoker, EGFR pending...")
+                        egfr_input  = gr.Radio(["unknown", "positive", "negative"], value="unknown", label="EGFR Status")
+                        alk_input   = gr.Radio(["unknown", "positive", "negative"], value="unknown", label="ALK Status")
                         run_btn     = gr.Button("▶️ Analyse Case", variant="primary")
 
                     with gr.Column():
@@ -323,7 +336,7 @@ def build_ui() -> gr.Blocks:
 
                 run_btn.click(
                     fn=run_custom_case,
-                    inputs=[img_upload, age_input, sex_input, notes_input],
+                    inputs=[img_upload, age_input, sex_input, notes_input, egfr_input, alk_input],
                     outputs=[upload_status, upload_log, upload_report],
                 )
 

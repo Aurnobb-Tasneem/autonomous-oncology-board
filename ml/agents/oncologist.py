@@ -96,6 +96,11 @@ class ManagementPlan:
     board_consensus: str
     disclaimer: str
     citations: list[str]
+    # ── Digital Twin: 12-month PFS simulation ───────────────────────────
+    pfs_12mo: float = 0.0
+    pfs_curve: list[dict] = field(default_factory=list)
+    pfs_model: str = ""
+    pfs_assumptions: list[str] = field(default_factory=list)
     # ── Agent Debate fields (populated after debate phase) ────────────────
     debate_transcript: list[dict] = field(default_factory=list)
     revision_history: list[dict] = field(default_factory=list)
@@ -168,12 +173,37 @@ class OncologistAgent:
         pathology: PathologyReport,
         research: ResearchSummary,
         similar_cases: Optional[list[dict]] = None,
+        metadata: Optional[dict] = None,
     ) -> str:
         tissue = pathology.tissue_type.replace("_", " ").title()
         stage  = TISSUE_STAGE_MAP.get(pathology.tissue_type, "Unknown stage")
         avg_abnorm = sum(p.abnormality_score for p in pathology.patch_findings) / max(len(pathology.patch_findings), 1)
 
         research_brief = research.format_for_oncologist()
+
+        biomarker_lines = []
+        for req in research.biomarker_requirements:
+            biomarker = req.get("biomarker", "")
+            status = req.get("status", "unknown")
+            action = req.get("action", "")
+            biomarker_lines.append(f"- {biomarker}: status={status}. {action}")
+
+        gating_lines = []
+        for gate in research.gated_treatments:
+            regimen = gate.get("regimen", "")
+            rule = gate.get("gate", "")
+            gating_lines.append(f"- {regimen}: {rule}")
+
+        biomarker_section = ""
+        if biomarker_lines or gating_lines:
+            parts = ["=== BIOMARKER GATING REQUIREMENTS ==="]
+            if biomarker_lines:
+                parts.append("BIOMARKER STATUS AND ACTIONS:")
+                parts.extend(biomarker_lines)
+            if gating_lines:
+                parts.append("GATED TREATMENTS:")
+                parts.extend(gating_lines)
+            biomarker_section = "\n".join(parts) + "\n\n"
 
         # ── Similar cases block (Board Memory) ────────────────────────────────
         similar_section = ""
@@ -189,6 +219,24 @@ class OncologistAgent:
                 )
             similar_section = "\n".join(lines) + "\n\n"
 
+        metadata_lines = []
+        if metadata:
+            age = metadata.get("patient_age")
+            sex = metadata.get("sex")
+            notes = metadata.get("clinical_notes")
+            if age:
+                metadata_lines.append(f"- Age: {age}")
+            if sex:
+                metadata_lines.append(f"- Sex: {sex}")
+            if notes:
+                metadata_lines.append(f"- Clinical notes: {notes}")
+            biomarker_status = metadata.get("biomarker_status")
+            if isinstance(biomarker_status, dict) and biomarker_status:
+                for key, value in biomarker_status.items():
+                    metadata_lines.append(f"- Biomarker {key}: {value}")
+
+        metadata_block = "\n".join(metadata_lines) if metadata_lines else "none"
+
         return f"""You are chairing an Autonomous Oncology Board meeting.
 
 === PATHOLOGY REPORT (from AI Pathologist using Prov-GigaPath) ===
@@ -200,11 +248,17 @@ Mean Abnormality Score: {avg_abnorm:.2f} (0=normal, 1=highly abnormal)
 Summary: {pathology.summary}
 Flags: {', '.join(pathology.flags) if pathology.flags else 'none'}
 
+=== PATIENT METADATA ===
+{metadata_block}
+
 === RESEARCH BRIEF (from AI Researcher using RAG + Oncology Literature) ===
 {research_brief}
 
-{similar_section}=== YOUR TASK ===
+{biomarker_section}{similar_section}=== YOUR TASK ===
 As the senior oncologist, synthesise the above into a complete Patient Management Plan.
+You MUST gate any biomarker-linked or targeted therapies behind biomarker status.
+If status is unknown, mark the regimen as PENDING and add the required tests to
+immediate actions and further investigations.
 Return a JSON object with exactly these fields:
 {{
   "patient_summary": "2-3 sentence overview of this case",
@@ -257,7 +311,7 @@ Return only the JSON. No markdown fences."""
                 "Discuss case with patient and family",
             ],
             "treatment_plan": {
-                "first_line": opts[0].regimen if opts else "Pending molecular results",
+                "first_line": (opts[0].regimen + " (PENDING biomarker results)") if opts else "Pending molecular results",
                 "rationale": f"Based on {opts[0].evidence_level if opts else 'NCCN guidelines'}",
                 "alternatives": [o.regimen for o in opts[1:3]],
             },
@@ -282,6 +336,7 @@ Return only the JSON. No markdown fences."""
         pathology_report: PathologyReport,
         research_summary: ResearchSummary,
         similar_cases: Optional[list[dict]] = None,
+        metadata: Optional[dict] = None,
     ) -> ManagementPlan:
         """
         Synthesise the final Patient Management Plan.
@@ -296,7 +351,12 @@ Return only the JSON. No markdown fences."""
         """
         log.info(f"OncologistAgent: synthesising case '{pathology_report.case_id}'")
 
-        prompt = self._build_prompt(pathology_report, research_summary, similar_cases=similar_cases)
+        prompt = self._build_prompt(
+            pathology_report,
+            research_summary,
+            similar_cases=similar_cases,
+            metadata=metadata,
+        )
 
         try:
             if self.llm.ping():
