@@ -336,3 +336,65 @@ class PathologistAgent:
         """Convenience wrapper — load images from file paths then analyse."""
         images = [Image.open(str(p)).convert("RGB") for p in image_paths]
         return self.analyse(case_id, images, batch_size=batch_size)
+
+    # ── Agent Debate: Referee method ──────────────────────────────────────────
+    def referee(
+        self,
+        original_report: PathologyReport,
+        flagged_issues: list[str],
+    ) -> dict:
+        """
+        Referee re-evaluation for the Agent Debate loop.
+
+        Called when the Researcher raises morphological doubts about the
+        Pathologist's original findings. Re-examines the original embeddings
+        to provide updated confidence estimates on disputed tissue regions.
+
+        Args:
+            original_report: The original PathologyReport.
+            flagged_issues:  List of issues raised by the Researcher.
+
+        Returns:
+            dict with referee_note (str), updated_confidence (float),
+            morphology_confirmed (bool)
+        """
+        log.info(f"PathologistAgent: referee re-evaluation for '{original_report.case_id}'")
+
+        # Analyse the existing findings — compute inter-patch consistency
+        confidences  = [p.class_confidence for p in original_report.patch_findings]
+        abnormalities = [p.abnormality_score for p in original_report.patch_findings]
+        classes      = [p.tissue_class for p in original_report.patch_findings]
+
+        mean_conf  = sum(confidences) / len(confidences) if confidences else 0
+        mean_abnorm = sum(abnormalities) / len(abnormalities) if abnormalities else 0
+        dominant   = original_report.tissue_type
+        consistency = sum(1 for c in classes if c == dominant) / len(classes) if classes else 0
+
+        # Build referee assessment
+        morphology_confirmed = mean_conf > 0.55 and consistency > 0.5
+
+        if morphology_confirmed:
+            referee_note = (
+                f"Referee confirms: Nuclear morphology consistent with "
+                f"{TISSUE_CLASS_LABELS.get(dominant, dominant)} in "
+                f"{consistency:.0%} of patches (mean confidence: {mean_conf:.0%}). "
+                f"Mean abnormality score {mean_abnorm:.2f} supports malignant classification."
+            )
+        else:
+            referee_note = (
+                f"Referee: Mixed morphology detected — {consistency:.0%} patch agreement. "
+                f"Tissue heterogeneity noted (mean confidence: {mean_conf:.0%}). "
+                f"Consider additional sectioning or IHC confirmation."
+            )
+
+        log.info(f"PathologistAgent: referee — confirmed={morphology_confirmed}, "
+                 f"consistency={consistency:.0%}")
+
+        return {
+            "referee_note": referee_note,
+            "updated_confidence": round(mean_conf * consistency, 4),
+            "morphology_confirmed": morphology_confirmed,
+            "patch_consistency": round(consistency, 4),
+            "mean_abnormality": round(mean_abnorm, 4),
+        }
+

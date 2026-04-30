@@ -96,6 +96,11 @@ class ManagementPlan:
     board_consensus: str
     disclaimer: str
     citations: list[str]
+    # ── Agent Debate fields (populated after debate phase) ────────────────
+    debate_transcript: list[dict] = field(default_factory=list)
+    revision_history: list[dict] = field(default_factory=list)
+    revision_notes: str = ""
+    consensus_score: int = 100   # 100 = no debate needed
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -330,3 +335,172 @@ Return only the JSON. No markdown fences."""
             f"first_line='{plan.treatment_plan.first_line[:50]}...'"
         )
         return plan
+
+    # ── Agent Debate: Revise method ──────────────────────────────────────────
+    def revise(
+        self,
+        current_plan: ManagementPlan,
+        critique: dict,
+        pathology_report: PathologyReport,
+        research_summary: ResearchSummary,
+        referee_update: Optional[dict] = None,
+        round_num: int = 1,
+    ) -> ManagementPlan:
+        """
+        Revise the management plan based on Researcher critique.
+
+        Called during the Agent Debate loop after the Researcher issues
+        a challenge. Produces a revised plan incorporating the critique.
+
+        Args:
+            current_plan:     The plan to be revised.
+            critique:         Challenge dict from ResearcherAgent.challenge().
+            pathology_report: Original pathology findings.
+            research_summary: Original research brief.
+            referee_update:   Optional Pathologist referee update.
+            round_num:        Current debate round.
+
+        Returns:
+            Revised ManagementPlan with updated treatment and revision_notes.
+        """
+        log.info(f"OncologistAgent: revising plan (round {round_num})")
+
+        challenge_text   = critique.get("challenge_text", "")
+        flagged_issues   = critique.get("flagged_issues", [])
+        recommendations  = critique.get("specific_recommendations", [])
+        referee_note     = referee_update.get("referee_note", "") if referee_update else ""
+
+        tissue = pathology_report.tissue_type.replace("_", " ").title()
+
+        prompt = f"""You are a senior oncologist revising your management plan based on a
+clinical challenge from your research colleague.
+
+ORIGINAL PLAN:
+  First-line treatment: {current_plan.treatment_plan.first_line}
+  Immediate actions: {'; '.join(current_plan.immediate_actions[:4])}
+  Further investigations: {'; '.join(current_plan.further_investigations[:4])}
+
+RESEARCHER CHALLENGE (Round {round_num}):
+  {challenge_text}
+  Specific issues: {'; '.join(flagged_issues)}
+  Recommendations: {'; '.join(recommendations)}
+{f'PATHOLOGIST REFEREE UPDATE: {referee_note}' if referee_note else ''}
+
+Revise your management plan to address these specific concerns.
+Incorporate the recommended molecular tests and gate therapy on results.
+
+Return a JSON object with exactly these fields:
+{{
+  "patient_summary": "Updated 2-3 sentence overview incorporating the challenge",
+  "diagnosis": {{
+    "primary": "{tissue}",
+    "tnm_stage": "stage with updated caveats",
+    "confidence": {current_plan.diagnosis.confidence}
+  }},
+  "immediate_actions": ["updated action 1", "updated action 2", "updated action 3"],
+  "treatment_plan": {{
+    "first_line": "updated regimen — gated on molecular results",
+    "rationale": "revised rationale incorporating critique",
+    "alternatives": ["alternative 1", "alternative 2"]
+  }},
+  "further_investigations": ["investigation 1", "investigation 2"],
+  "multidisciplinary_referrals": ["referral 1", "referral 2"],
+  "follow_up": "updated follow-up schedule",
+  "confidence_score": 0.85,
+  "board_consensus": "Revised consensus incorporating researcher challenge",
+  "citations": ["citation 1", "citation 2"],
+  "revision_notes": "✅ REVISED: One sentence describing what was changed and why"
+}}
+
+Return only the JSON."""
+
+        try:
+            if self.llm.ping():
+                response = self.llm.generate_sync(
+                    prompt=prompt,
+                    system=ONCOLOGIST_SYSTEM,
+                    temperature=0.15,
+                    max_tokens=1000,
+                )
+                text = response.text.strip()
+                match = re.search(r'\{.*\}', text, re.DOTALL)
+                plan_dict = json.loads(match.group() if match else text)
+            else:
+                plan_dict = self._fallback_revision(current_plan, critique)
+        except Exception as e:
+            log.warning(f"OncologistAgent: revision LLM failed ({e}), using fallback")
+            plan_dict = self._fallback_revision(current_plan, critique)
+
+        revision_notes = plan_dict.pop("revision_notes", "✅ REVISED: Plan updated based on researcher challenge")
+
+        # Build revised plan (carry over debate transcript from current plan)
+        diag_raw = plan_dict.get("diagnosis", {})
+        tx_raw   = plan_dict.get("treatment_plan", {})
+
+        revised = ManagementPlan(
+            case_id=current_plan.case_id,
+            generated_at=current_plan.generated_at,
+            patient_summary=plan_dict.get("patient_summary", current_plan.patient_summary),
+            diagnosis=Diagnosis(
+                primary=diag_raw.get("primary", current_plan.diagnosis.primary),
+                tnm_stage=diag_raw.get("tnm_stage", current_plan.diagnosis.tnm_stage),
+                confidence=float(diag_raw.get("confidence", current_plan.diagnosis.confidence)),
+            ),
+            immediate_actions=plan_dict.get("immediate_actions", current_plan.immediate_actions),
+            treatment_plan=TreatmentPlan(
+                first_line=tx_raw.get("first_line", current_plan.treatment_plan.first_line),
+                rationale=tx_raw.get("rationale", current_plan.treatment_plan.rationale),
+                alternatives=tx_raw.get("alternatives", current_plan.treatment_plan.alternatives),
+            ),
+            further_investigations=plan_dict.get("further_investigations", current_plan.further_investigations),
+            multidisciplinary_referrals=plan_dict.get("multidisciplinary_referrals", current_plan.multidisciplinary_referrals),
+            follow_up=plan_dict.get("follow_up", current_plan.follow_up),
+            confidence_score=float(plan_dict.get("confidence_score", current_plan.confidence_score)),
+            board_consensus=plan_dict.get("board_consensus", current_plan.board_consensus),
+            disclaimer=current_plan.disclaimer,
+            citations=plan_dict.get("citations", current_plan.citations),
+            # Carry forward debate fields
+            debate_transcript=current_plan.debate_transcript,
+            revision_history=current_plan.revision_history,
+            revision_notes=revision_notes,
+            consensus_score=current_plan.consensus_score,
+        )
+
+        log.info(
+            f"OncologistAgent: revision complete (round {round_num}) — "
+            f"first_line='{revised.treatment_plan.first_line[:60]}'"
+        )
+        return revised
+
+    def _fallback_revision(self, current_plan: ManagementPlan, critique: dict) -> dict:
+        """Rule-based revision fallback when LLM unavailable."""
+        recs = critique.get("specific_recommendations", [])
+        updated_actions = list(current_plan.immediate_actions)
+        updated_investigations = list(current_plan.further_investigations)
+
+        # Add recommended tests to investigations
+        for rec in recs:
+            if rec not in updated_investigations:
+                updated_investigations.insert(0, rec)
+
+        return {
+            "patient_summary": current_plan.patient_summary,
+            "diagnosis": {
+                "primary": current_plan.diagnosis.primary,
+                "tnm_stage": current_plan.diagnosis.tnm_stage,
+                "confidence": current_plan.diagnosis.confidence,
+            },
+            "immediate_actions": updated_actions,
+            "treatment_plan": {
+                "first_line": current_plan.treatment_plan.first_line + " (PENDING molecular results)",
+                "rationale": current_plan.treatment_plan.rationale,
+                "alternatives": current_plan.treatment_plan.alternatives,
+            },
+            "further_investigations": updated_investigations,
+            "multidisciplinary_referrals": current_plan.multidisciplinary_referrals,
+            "follow_up": current_plan.follow_up,
+            "confidence_score": current_plan.confidence_score,
+            "board_consensus": current_plan.board_consensus + " Revised per researcher challenge.",
+            "citations": current_plan.citations,
+            "revision_notes": "✅ REVISED: Added molecular testing requirements before targeted therapy.",
+        }

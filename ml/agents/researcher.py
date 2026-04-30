@@ -287,3 +287,131 @@ Return only the JSON object. No markdown, no explanation."""
             f"quality={summary.evidence_quality}"
         )
         return summary
+
+    # ── Agent Debate: Challenge method ────────────────────────────────────────
+    def challenge(
+        self,
+        draft_plan_dict: dict,
+        pathology_report: PathologyReport,
+        research_summary: ResearchSummary,
+        round_num: int = 1,
+    ) -> dict:
+        """
+        Challenge the Oncologist's draft plan using RAG evidence.
+
+        Called during the Agent Debate loop. Searches for guideline
+        contradictions, missing molecular tests, or evidence gaps in
+        the proposed management plan.
+
+        Args:
+            draft_plan_dict:   The Oncologist's current plan as a dict.
+            pathology_report:  Original pathology findings.
+            research_summary:  Original research brief.
+            round_num:         Current debate round number.
+
+        Returns:
+            dict with keys: challenge_text (str), flagged_issues (list),
+            morphological_doubts (bool), specific_recommendations (list)
+        """
+        log.info(f"ResearcherAgent: challenging draft plan (round {round_num})")
+
+        tissue = pathology_report.tissue_type.replace("_", " ").title()
+        first_line = draft_plan_dict.get("treatment_plan", {}).get("first_line", "")
+        investigations = draft_plan_dict.get("further_investigations", [])
+        actions = draft_plan_dict.get("immediate_actions", [])
+
+        # Retrieve specific biomarker/guideline evidence for the challenge
+        challenge_query = (
+            f"{tissue} NCCN guidelines molecular testing requirements biomarker "
+            f"EGFR ALK ROS1 PD-L1 before targeted therapy contraindications"
+        )
+        evidence = self.retriever.retrieve(
+            query=challenge_query,
+            tissue_type=pathology_report.tissue_type,
+            top_k=3,
+        )
+        evidence_text = evidence.format_for_llm() if hasattr(evidence, 'format_for_llm') else str(evidence)
+
+        prompt = f"""You are a clinical oncology researcher reviewing a draft management plan
+for a patient with {tissue}.
+
+DRAFT MANAGEMENT PLAN:
+  First-line treatment: {first_line}
+  Immediate actions: {'; '.join(actions[:4])}
+  Investigations ordered: {'; '.join(investigations[:4])}
+
+EVIDENCE FROM ONCOLOGY CORPUS:
+{evidence_text}
+
+KEY GUIDELINES TO CHECK AGAINST:
+- NCCN NSCLC: EGFR/ALK/ROS1/BRAF/KRAS/MET/RET/NTRK must be tested before TKI
+- NCCN: PD-L1 ≥50% required for pembrolizumab monotherapy without chemo
+- Osimertinib: ONLY for EGFR-mutant (exon 19 del or L858R)
+- Alectinib: ONLY for ALK-positive NSCLC
+- For colon: MSI-H required for pembrolizumab; KRAS/NRAS WT for anti-EGFR
+
+Round {round_num} challenge: Identify any clinical concerns, missing tests,
+or guideline violations in the draft plan.
+
+Return a JSON object with exactly these fields:
+{{
+  "challenge_text": "⚠️ CHALLENGE: One clear sentence summarising the main concern",
+  "flagged_issues": ["Specific issue 1", "Specific issue 2"],
+  "morphological_doubts": false,
+  "specific_recommendations": ["Add EGFR testing before osimertinib", "Gate TKI on molecular results"],
+  "severity": "high"
+}}
+
+Return only the JSON. Be specific and cite the NCCN guideline violated."""
+
+        try:
+            if not self.llm.ping():
+                return self._heuristic_challenge(tissue, first_line, investigations)
+
+            response = self.llm.generate_sync(
+                prompt=prompt,
+                system=SYSTEM_PROMPT,
+                temperature=0.1,
+                max_tokens=500,
+            )
+            text = response.text.strip()
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            result = json.loads(match.group() if match else text)
+            log.info(f"ResearcherAgent: challenge issued — '{result.get('challenge_text', '')[:80]}'")
+            return result
+
+        except Exception as e:
+            log.warning(f"ResearcherAgent: challenge LLM failed ({e}), using heuristic")
+            return self._heuristic_challenge(tissue, first_line, investigations)
+
+    def _heuristic_challenge(
+        self,
+        tissue: str,
+        first_line: str,
+        investigations: list[str],
+    ) -> dict:
+        """Rule-based challenge when LLM is unavailable."""
+        # Check for common missing items
+        missing = []
+        if "lung" in tissue.lower():
+            mol_tests = ["EGFR", "ALK", "ROS1", "PD-L1"]
+            missing = [t for t in mol_tests if not any(t in inv for inv in investigations)]
+        elif "colon" in tissue.lower():
+            mol_tests = ["MSI", "KRAS", "BRAF"]
+            missing = [t for t in mol_tests if not any(t in inv for inv in investigations)]
+
+        if missing:
+            return {
+                "challenge_text": f"⚠️ CHALLENGE: Molecular testing ({', '.join(missing)}) required before targeted therapy per NCCN guidelines.",
+                "flagged_issues": [f"Missing {t} testing" for t in missing],
+                "morphological_doubts": False,
+                "specific_recommendations": [f"Order {t} testing before initiating {first_line}" for t in missing[:2]],
+                "severity": "high",
+            }
+        return {
+            "challenge_text": "✅ No major guideline violations detected in draft plan.",
+            "flagged_issues": [],
+            "morphological_doubts": False,
+            "specific_recommendations": [],
+            "severity": "low",
+        }

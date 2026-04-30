@@ -172,73 +172,38 @@ class JobStatusResponse(BaseModel):
 
 # ── Background worker ────────────────────────────────────────────────────────
 def _run_board_job(job: Job, images_bytes: list[bytes]):
-    """Runs the AOB pipeline in a background thread, emitting steps to the job."""
+    """Runs the AOB pipeline in a background thread, emitting steps via SSE."""
     from PIL import Image
 
     try:
         job.status = JobStatus.RUNNING
-        job.add_step("system", "Case received — starting analysis pipeline", 5)
+        job.add_step("system", "Case received — starting AOB pipeline", 5)
 
-        # ── Load images ──────────────────────────────────────────────────────
+        # Decode images
         job.add_step("system", f"Decoding {len(images_bytes)} image patches", 8)
         images = [Image.open(io.BytesIO(b)).convert("RGB") for b in images_bytes]
 
-        # ── Monkey-patch board to emit steps ─────────────────────────────────
-        # We intercept logging to emit SSE steps
-        original_run = _board.run
+        # Step callback — bridges board.run() steps into the SSE job stream
+        def step_cb(agent: str, message: str, progress: int):
+            job.add_step(agent, message, progress)
 
-        def instrumented_run(case_id, imgs, batch_size=16):
-            job.add_step("pathologist", "GigaPath: loading model and preprocessing patches", 15)
-            # Run pathologist
-            path_report = _board.pathologist.analyse(case_id, imgs, batch_size=batch_size)
-            job.add_step(
-                "pathologist",
-                f"GigaPath: classified {path_report.n_patches} patches → "
-                f"{path_report.tissue_type.replace('_', ' ').title()} "
-                f"({path_report.confidence:.0%} confidence)",
-                40,
-            )
-            if path_report.flags:
-                job.add_step("pathologist", f"⚠️ Flags detected: {', '.join(path_report.flags)}", 42)
+        # Run the full pipeline + Agent Debate loop
+        result = _board.run(
+            case_id=job.case_id,
+            images=images,
+            debate_mode=True,
+            step_callback=step_cb,
+        )
 
-            job.add_step("researcher", "Building clinical query from pathology findings", 45)
-            research = _board.researcher.research(path_report)
-            job.add_step(
-                "researcher",
-                f"Retrieved {research.raw_evidence.get('n_retrieved', 0)} evidence documents "
-                f"(quality: {research.evidence_quality})",
-                60,
-            )
-            job.add_step("researcher", f"Synthesised {len(research.treatment_options)} treatment options", 65)
-
-            job.add_step("oncologist", "Llama 3.3 70B: generating Patient Management Plan...", 70)
-            plan = _board.oncologist.synthesise(path_report, research)
-            job.add_step(
-                "oncologist",
-                f"Management plan complete — confidence: {plan.confidence_score:.0%}",
-                95,
-            )
-
-            from ml.board import BoardResult
-            import time
-            return BoardResult(
-                case_id=case_id,
-                pathology_report=path_report,
-                research_summary=research,
-                management_plan=plan,
-                total_time_s=0,  # board.run will set this
-            )
-
-        result = instrumented_run(job.case_id, images)
         job.result = result
         job.status = JobStatus.DONE
-        job.add_step("system", f"✅ Analysis complete — {result.management_plan.diagnosis.primary}", 100)
 
     except Exception as e:
         log.exception(f"Job {job.job_id} failed: {e}")
         job.status = JobStatus.FAILED
         job.error  = str(e)
         job.add_step("system", f"❌ Pipeline failed: {e}", -1)
+
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
