@@ -14,16 +14,30 @@ CONTAINER="rocm"
 API_URL="http://localhost:8000/health"
 HEALTH_RETRIES=30      # 30 × 2s = 60s max wait
 HEALTH_INTERVAL=2
+SKIP_PULL=false
+
+# Parse flags
+for arg in "$@"; do
+  case "$arg" in
+    --skip-pull) SKIP_PULL=true ;;
+  esac
+done
 
 echo ""
 echo "==> [AOB Deploy] $(date '+%Y-%m-%d %H:%M:%S')"
 
 # ── 1. Pull latest code ────────────────────────────────────────────────────
-echo "--> Pulling latest code from GitHub..."
-cd "$REPO_DIR"
-git fetch origin main
-git reset --hard origin/main
-echo "    OK — now at $(git rev-parse --short HEAD)"
+if [ "$SKIP_PULL" = "true" ]; then
+  echo "--> Skipping pull (already done by caller)"
+  cd "$REPO_DIR"
+  echo "    At $(git rev-parse --short HEAD)"
+else
+  echo "--> Pulling latest code from GitHub..."
+  cd "$REPO_DIR"
+  git fetch origin main
+  git reset --hard origin/main
+  echo "    OK — now at $(git rev-parse --short HEAD)"
+fi
 
 # ── 2. Sync into Docker container ─────────────────────────────────────────
 echo "--> Syncing code into container..."

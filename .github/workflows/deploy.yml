@@ -32,7 +32,12 @@ jobs:
           host: ${{ secrets.AMD_HOST }}
           username: ${{ secrets.AMD_USER }}
           key: ${{ secrets.AMD_SSH_KEY }}
-          script: bash /root/aob/scripts/deploy.sh
+          script: |
+            set -e
+            cd /root/aob
+            git fetch origin main
+            git reset --hard origin/main
+            bash /root/aob/scripts/deploy.sh --skip-pull
           command_timeout: 5m
 
       - name: Skip notice
