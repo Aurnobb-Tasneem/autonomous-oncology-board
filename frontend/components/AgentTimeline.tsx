@@ -7,7 +7,10 @@ interface AgentTimelineProps {
   elapsed: number;
 }
 
-const AGENTS: AgentId[] = ["pathologist", "second_opinion", "researcher", "tnm_specialist", "oncologist"];
+// NOTE: The Python board currently does not emit a dedicated `tnm_specialist` SSE agent —
+// TNM appears inside the Oncologist/ManagementPlan output. Keep the live grid aligned with
+// what the backend actually streams to avoid a permanently-empty column.
+const AGENTS: AgentId[] = ["pathologist", "second_opinion", "researcher", "oncologist"];
 
 const ACTIVE_TEAL = "#0f766e";
 const ACTIVE_GLASS_BG = "rgba(7, 23, 31, 0.55)";
@@ -17,7 +20,7 @@ const AGENT_LABELS: Record<AgentId, { icon: string; label: string; color: string
   pathologist: { icon: "🔬", label: "GigaPath Pathologist", color: "#0d9488" },
   second_opinion: { icon: "🧠", label: "Qwen-VL Second Opinion", color: "#22c55e" },
   researcher: { icon: "📚", label: "Researcher", color: "#7c3aed" },
-  tnm_specialist: { icon: "🧬", label: "Llama-3-8B TNM Specialist", color: "#38bdf8" },
+  tnm_specialist: { icon: "🧬", label: "Llama 3.1 8B TNM (LoRA)", color: "#38bdf8" },
   oncologist: { icon: "👨‍⚕️", label: "Main Oncologist", color: "#0891b2" },
   debate: { icon: "⚖️", label: "Debate", color: "#d97706" },
   system: { icon: "⚙️", label: "System", color: "#64748b" },
@@ -27,7 +30,17 @@ function normalizeAgentId(raw: string): AgentId | null {
   const s = raw.toLowerCase().trim();
   if (!s) return null;
 
-  if (s.includes("qwen") || s.includes("qwen-vl") || s.includes("second_opinion") || s.includes("second opinion") || s.includes("second-opinion"))
+  if (
+    s.includes("qwen") ||
+    s.includes("qwen-vl") ||
+    s.includes("qwen2.5") ||
+    s.includes("vlm_pathologist") ||
+    s.includes("vlm-pathologist") ||
+    s.includes("vlm pathologist") ||
+    s.includes("second_opinion") ||
+    s.includes("second opinion") ||
+    s.includes("second-opinion")
+  )
     return "second_opinion";
   if (s.includes("tnm") || s.includes("tnm_specialist") || s.includes("tnm specialist") || s.includes("tnm-specialist") || s.includes("staging"))
     return "tnm_specialist";
@@ -57,7 +70,7 @@ export default function AgentTimeline({ steps, elapsed }: AgentTimelineProps) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateColumns: "repeat(4, 1fr)",
           gap: "1rem",
           marginBottom: "1rem",
         }}

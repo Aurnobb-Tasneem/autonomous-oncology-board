@@ -157,6 +157,9 @@ export interface SseStep {
    * Kept permissive to avoid breaking on new/unknown agents.
    */
   agent?: AgentId | (string & {});
+  /** Optional progress percent from backend AgentStep (0–100). */
+  progress?: number;
+  timestamp?: string;
 }
 
 // ── API Functions ──────────────────────────────────────────────────────────
@@ -231,27 +234,65 @@ export function streamJob(
   onError: (err: string) => void
 ): () => void {
   const es = new EventSource(`${BASE}/stream/${jobId}`);
+  let finished = false;
 
+  const handleDone = () => {
+    if (finished) return;
+    finished = true;
+    onDone();
+    es.close();
+  };
+
+  const handleError = (msg: string) => {
+    if (finished) return;
+    finished = true;
+    onError(msg);
+    es.close();
+  };
+
+  /** FastAPI /stream/{job_id} emits AgentStep JSON on the default message event. */
   es.onmessage = (e) => {
     try {
-      const data: SseStep = JSON.parse(e.data);
-      if (data.type === "done") {
-        onDone();
-        es.close();
-      } else if (data.type === "error") {
-        onError(data.message);
-        es.close();
-      } else {
-        onStep(data);
+      const raw = JSON.parse(e.data) as Record<string, unknown>;
+
+      // Legacy/alternate shapes (keep tolerant)
+      if (raw.type === "done") {
+        handleDone();
+        return;
       }
+      if (raw.type === "error") {
+        handleError(String(raw.message ?? "Pipeline error"));
+        return;
+      }
+
+      const agent = typeof raw.agent === "string" ? raw.agent : undefined;
+      const message = typeof raw.message === "string" ? raw.message : "";
+      const progress = typeof raw.progress === "number" ? raw.progress : undefined;
+      const timestamp = typeof raw.timestamp === "string" ? raw.timestamp : undefined;
+
+      const step: SseStep = {
+        type: agent ?? "step",
+        message,
+        agent,
+        progress,
+        timestamp,
+      };
+      onStep(step);
     } catch {
       // ignore parse errors
     }
   };
 
+  /** Same endpoint also emits: `event: done` with `{status, job_id}` — this MUST be handled
+   *  or the browser will raise `onerror` when the stream closes (shows as "Connection lost"). */
+  es.addEventListener("done", () => {
+    handleDone();
+  });
+
   es.onerror = () => {
-    onError("Connection lost");
-    es.close();
+    // EventSource errors also fire on normal close in some browsers; don't overwrite a clean finish.
+    if (finished) return;
+    handleError("Connection lost");
   };
 
   return () => es.close();
