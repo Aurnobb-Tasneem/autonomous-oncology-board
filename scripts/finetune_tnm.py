@@ -586,7 +586,6 @@ def run_training(args: argparse.Namespace):
         args=training_args,
         train_dataset=tokenized["train"],
         eval_dataset=tokenized["test"],
-        tokenizer=tokenizer,
         data_collator=data_collator,
     )
 

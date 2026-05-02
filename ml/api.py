@@ -430,81 +430,88 @@ async def get_vram():
     """
     import subprocess
 
+    import re as _re
+
+    # ── Total VRAM (JSON — reliable on all ROCm versions) ─────────────────
     try:
-        result = subprocess.run(
+        mem_result = subprocess.run(
             ["rocm-smi", "--showmeminfo", "vram", "--json"],
             capture_output=True, text=True, timeout=5,
         )
-        if result.returncode == 0:
-            import json as _json
-            raw = _json.loads(result.stdout)
-            # rocm-smi JSON format: {"card0": {"VRAM Total Memory (B)": ..., "VRAM Total Used Memory (B)": ...}}
-            card = next(iter(raw.values()), {})
-            total_b = int(card.get("VRAM Total Memory (B)", 0))
-            used_b  = int(card.get("VRAM Total Used Memory (B)", 0))
-            total_gb = round(total_b / 1e9, 1)
-            used_gb  = round(used_b  / 1e9, 1)
-            pct = round(used_gb / total_gb * 100, 1) if total_gb > 0 else 0
-        else:
-            raise RuntimeError(result.stderr)
-
+        if mem_result.returncode != 0:
+            raise RuntimeError(mem_result.stderr)
+        import json as _json
+        raw = _json.loads(mem_result.stdout)
+        card     = next(iter(raw.values()), {})
+        total_b  = int(card.get("VRAM Total Memory (B)", 0))
+        used_b   = int(card.get("VRAM Total Used Memory (B)", 0))
+        total_gb = round(total_b / 1e9, 1)
+        used_gb  = round(used_b  / 1e9, 1)
+        pct      = round(used_gb / total_gb * 100, 1) if total_gb > 0 else 0
+        source   = "rocm-smi"
     except Exception as e:
-        log.warning(f"rocm-smi failed: {e} — returning mock data")
-        # Mock data for local dev / non-AMD hosts
+        log.warning(f"rocm-smi --showmeminfo failed: {e} — returning mock data")
         used_gb  = 102.3
         total_gb = 191.7
         pct      = 53.4
         source   = "mock"
-    else:
-        source = "rocm-smi"
 
-    # ── Per-process VRAM (best-effort — requires ROCm ≥ 5.5) ──────────────
-    # Try rocm-smi --showpids to get per-PID breakdown; used only for KV cache
-    # estimation.  Falls back to a formula if unavailable.
+    # ── Per-process VRAM (rocm-smi --showpids text output) ────────────────
+    # Format (header + data rows):
+    #   PID     PROCESS NAME    GPU(s)  VRAM USED       SDMA USED  CU OCCUPANCY
+    #   14174   uvicorn         1       20796682240     0           0
+    #   14405   ollama          1       48175480832     0           0
+    processes: dict[str, float] = {}   # {process_name: vram_gb}
     try:
         pid_result = subprocess.run(
             ["rocm-smi", "--showpids"],
             capture_output=True, text=True, timeout=5,
         )
-        # rocm-smi --showpids prints lines like:
-        #   PID  PROCESS NAME   GPU[0] VRAM USED   GFX%  ...
-        # Parse the VRAM column for all PIDs and sum to get a better estimate
-        # of actively used VRAM (vs OS-reserved total).
-        # This is a best-effort heuristic; exact KV cache isolation requires
-        # vLLM internal metrics.
-        import re as _re
-        pid_vram_bytes = sum(
-            int(m) for m in _re.findall(r"(\d{6,})", pid_result.stdout)
-        )
-        if pid_vram_bytes > 0:
-            pid_vram_gb = round(pid_vram_bytes / 1e9, 1)
-        else:
-            pid_vram_gb = None
-    except Exception:
-        pid_vram_gb = None
+        for line in pid_result.stdout.splitlines():
+            # Match lines that start with a PID (integer), followed by process name and VRAM bytes
+            m = _re.match(r"^\s*(\d+)\s+(\S+)\s+\d+\s+(\d+)", line)
+            if m:
+                proc_name = m.group(2).lower()
+                vram_b    = int(m.group(3))
+                vram_gb   = round(vram_b / 1e9, 1)
+                processes[proc_name] = processes.get(proc_name, 0.0) + vram_gb
+    except Exception as e:
+        log.debug(f"rocm-smi --showpids unavailable: {e}")
 
-    # Always-resident model baseline (GigaPath + Llama 3.3 70B via Ollama)
-    _BASELINE_GB = 43.2   # 3.2 (GigaPath) + 40.0 (Llama 70B)
-    kv_cache_gb  = max(0.0, round(used_gb - _BASELINE_GB, 1))
+    # ── Derive per-model breakdown from real process data ─────────────────
+    # GigaPath lives in the uvicorn process; Llama 70B lives in ollama.
+    # KV cache = ollama total − Llama weights; runtime overhead = uvicorn − GigaPath.
+    GIGAPATH_WEIGHTS_GB = 3.2
+    LLAMA_70B_WEIGHTS_GB = 40.0
+
+    uvicorn_gb = processes.get("uvicorn", 0.0) or processes.get("python", 0.0) or processes.get("python3", 0.0)
+    ollama_gb  = processes.get("ollama", 0.0)
+
+    if ollama_gb > 0:
+        kv_cache_gb      = max(0.0, round(ollama_gb  - LLAMA_70B_WEIGHTS_GB, 1))
+        runtime_overhead = max(0.0, round(uvicorn_gb - GIGAPATH_WEIGHTS_GB, 1))
+    else:
+        # Fall back to formula when process data is unavailable
+        kv_cache_gb      = max(0.0, round(used_gb - (GIGAPATH_WEIGHTS_GB + LLAMA_70B_WEIGHTS_GB), 1))
+        runtime_overhead = None
 
     return {
-        "used_gb":    used_gb,
-        "total_gb":   total_gb,
-        "percent":    pct,
-        "free_gb":    round(total_gb - used_gb, 1),
+        "used_gb":      used_gb,
+        "total_gb":     total_gb,
+        "free_gb":      round(total_gb - used_gb, 1),
+        "percent":      pct,
         "percent_used": pct,
-        "source":     source,
-        "h100_limit_gb": 80.0,
-        "exceeds_h100": used_gb > 80.0,
+        "source":       source,
+        "h100_limit_gb":  80.0,
+        "exceeds_h100":   used_gb > 80.0,
         "model_breakdown": {
-            "gigapath_gb":  3.2,    # Prov-GigaPath ViT-Giant (always resident)
-            "llama_gb":     40.0,   # Llama 3.3 70B via Ollama (always resident)
-            "qwen_vl_gb":   15.4,   # Qwen2.5-VL-7B-Instruct (loaded on demand)
-            "llama_8b_gb":  16.0,   # Llama 3.1 8B TNM base (vLLM, if running)
-            "tnm_lora_gb":  1.8,    # TNM LoRA adapter overhead
-            "kv_cache_gb":  kv_cache_gb,   # Derived: total − always-resident baseline
+            "gigapath_gb":        GIGAPATH_WEIGHTS_GB,
+            "llama_gb":           LLAMA_70B_WEIGHTS_GB,
+            "kv_cache_gb":        kv_cache_gb,
+            "runtime_overhead_gb": runtime_overhead,
         },
-        "pid_vram_gb": pid_vram_gb,  # Per-process total (null if rocm-smi --showpids unavailable)
+        # Actual per-process breakdown from rocm-smi --showpids
+        "processes": {k: v for k, v in processes.items()} if processes else None,
         "hardware": "AMD Instinct MI300X · 192 GB HBM3",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

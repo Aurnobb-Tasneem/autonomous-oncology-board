@@ -94,22 +94,30 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
             }}
           />
         </div>
-        {/* Model breakdown */}
-        {vram?.model_breakdown && (
+        {/* Model breakdown — prefer real per-process data, fall back to estimates */}
+        {vram && (
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.35rem", flexWrap: "wrap" }}>
-            {[
-              { label: "GigaPath", val: vram.model_breakdown.gigapath_gb },
-              { label: "Llama 70B", val: vram.model_breakdown.llama_gb },
-              { label: "Qwen2.5-VL", val: vram.model_breakdown.qwen_vl_gb },
-              { label: "Llama 8B Base", val: vram.model_breakdown.llama_8b_gb },
-              { label: "TNM LoRA", val: vram.model_breakdown.tnm_lora_gb },
-              { label: "KV Cache", val: vram.model_breakdown.kv_cache_gb },
-            ].filter((m) => m.val !== undefined).map((m) => (
-              <span key={m.label} style={{ fontSize: breakdownSize, color: "var(--text-muted)" }}>
-                <span style={{ color: "var(--teal-light)" }}>●</span> {m.label}{" "}
-                <span style={{ color: "var(--text-dim)" }}>{m.val} GB</span>
-              </span>
-            ))}
+            {vram.processes && Object.keys(vram.processes).length > 0
+              ? Object.entries(vram.processes).map(([proc, gb]) => (
+                  <span key={proc} style={{ fontSize: breakdownSize, color: "var(--text-muted)" }}>
+                    <span style={{ color: "var(--teal-light)" }}>●</span>{" "}
+                    <span style={{ fontFamily: "monospace" }}>{proc}</span>{" "}
+                    <span style={{ color: "var(--text-dim)" }}>{gb} GB</span>
+                  </span>
+                ))
+              : [
+                  { label: "GigaPath", val: vram.model_breakdown?.gigapath_gb },
+                  { label: "Llama 70B", val: vram.model_breakdown?.llama_gb },
+                  { label: "KV Cache", val: vram.model_breakdown?.kv_cache_gb },
+                  { label: "Runtime", val: vram.model_breakdown?.runtime_overhead_gb ?? undefined },
+                ]
+                  .filter((m) => m.val != null && (m.val as number) > 0)
+                  .map((m) => (
+                    <span key={m.label} style={{ fontSize: breakdownSize, color: "var(--text-muted)" }}>
+                      <span style={{ color: "var(--teal-light)" }}>●</span> {m.label}{" "}
+                      <span style={{ color: "var(--text-dim)" }}>{m.val} GB</span>
+                    </span>
+                  ))}
           </div>
         )}
       </div>
@@ -160,7 +168,7 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
         <p style={{ fontSize: breakdownSize, color: "rgba(239,68,68,0.7)", marginTop: "0.3rem" }}>
-          GigaPath (3.2) + Llama 70B (40) + Qwen-VL (15.4) + Llama 8B (16) + LoRA (1.8) + KV (25.9) = 102.3 GB &gt; 80 GB limit
+          GigaPath (3.2 GB) + Llama 3.3 70B (40 GB) + KV cache alone exceeds H100 limit
         </p>
       </div>
 

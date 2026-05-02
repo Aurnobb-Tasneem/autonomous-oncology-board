@@ -19,7 +19,14 @@ export interface VramInfo {
   total_gb: number;
   free_gb: number;
   percent_used: number;
-  model_breakdown?: { gigapath_gb: number; llama_gb: number; qwen_vl_gb?: number; llama_8b_gb?: number; tnm_lora_gb?: number; kv_cache_gb: number };
+  model_breakdown?: {
+    gigapath_gb: number;
+    llama_gb: number;
+    kv_cache_gb: number;
+    runtime_overhead_gb?: number | null;
+  };
+  /** Real per-process VRAM from rocm-smi --showpids  e.g. { uvicorn: 20.8, ollama: 48.2 } */
+  processes?: Record<string, number> | null;
   source: "rocm-smi" | "mock";
 }
 
