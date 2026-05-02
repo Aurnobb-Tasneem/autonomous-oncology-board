@@ -549,6 +549,153 @@ Return only the JSON."""
         )
         return revised
 
+    def request_pathology_clarification(
+        self,
+        plan: ManagementPlan,
+        pathology_report,   # ml.agents.pathologist.PathologyReport (avoid circular import)
+    ) -> dict:
+        """
+        Generate specific morphological concerns when plan confidence is low.
+
+        Called by board.run() as part of the cross-agent feedback loop:
+          1. Oncologist detects low confidence in its own management plan.
+          2. This method produces a structured critique of what morphological
+             details need clarification from the Pathologist.
+          3. board.run() passes those concerns to PathologistAgent.referee().
+
+        The result is a named pipeline stage visible in the SSE timeline —
+        the "backward gradient" from Oncologist → Pathologist.
+
+        Args:
+            plan:             ManagementPlan with a low confidence_score.
+            pathology_report: PathologyReport from Agent 1.
+
+        Returns:
+            dict with keys:
+              critique_text              (str)  — full explanation of uncertainties
+              specific_concerns          (list[str]) — 2–4 morphological questions
+              confidence_threshold_missed (float) — the actual confidence score
+              triggered_by               (str)  — always "low_oncologist_confidence"
+        """
+        tissue = pathology_report.tissue_type.replace("_", " ").title()
+        flags_str = (
+            ", ".join(pathology_report.flags)
+            if pathology_report.flags else "none"
+        )
+        confidence_pct = f"{plan.confidence_score:.0%}"
+
+        prompt = f"""You are a senior consultant oncologist who has just produced a management plan
+for a patient but has low diagnostic confidence ({confidence_pct}).
+
+PATHOLOGY FINDINGS:
+  Tissue classification : {tissue}
+  GigaPath confidence   : {pathology_report.confidence:.0%}
+  Pathology flags       : {flags_str}
+  Pathology summary     : {pathology_report.summary[:300]}
+
+MANAGEMENT PLAN CONFIDENCE: {confidence_pct}
+DIAGNOSIS: {plan.diagnosis.primary}
+
+You need to request targeted re-evaluation from the digital pathologist.
+Identify 2–4 specific morphological features that, if confirmed or denied,
+would most change or strengthen this diagnosis and treatment plan.
+
+Return ONLY valid JSON with exactly these fields:
+{{
+  "critique_text": "The management plan confidence is low because...",
+  "specific_concerns": [
+    "Confirm presence of glandular structures consistent with adenocarcinoma",
+    "Assess nuclear grade and mitotic index in high-abnormality patches"
+  ]
+}}
+
+Be specific, clinically precise, and actionable. 2–4 concerns maximum."""
+
+        try:
+            if not self.llm.ping():
+                log.warning(
+                    "OncologistAgent.request_pathology_clarification: LLM unavailable "
+                    "— using flag-based heuristic"
+                )
+                return self._fallback_clarification(plan, pathology_report)
+
+            response = self.llm.generate_sync(
+                prompt=prompt,
+                system=(
+                    "You are a senior oncologist requesting targeted pathology clarification. "
+                    "Output valid JSON only — no markdown fences, no preamble."
+                ),
+                temperature=0.05,
+                max_tokens=350,
+            )
+            text = response.text.strip()
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            result = json.loads(match.group() if match else text)
+
+            concerns = result.get("specific_concerns", [])
+            log.info(
+                f"OncologistAgent: pathology clarification requested — "
+                f"{len(concerns)} concerns generated (confidence={confidence_pct})"
+            )
+            return {
+                "critique_text":               result.get("critique_text", ""),
+                "specific_concerns":           concerns[:4],
+                "confidence_threshold_missed": plan.confidence_score,
+                "triggered_by":                "low_oncologist_confidence",
+            }
+
+        except Exception as e:
+            log.warning(
+                f"OncologistAgent.request_pathology_clarification: failed ({e}) "
+                "— using fallback"
+            )
+            return self._fallback_clarification(plan, pathology_report)
+
+    def _fallback_clarification(self, plan: ManagementPlan, pathology_report) -> dict:
+        """
+        Heuristic clarification when the LLM is unavailable.
+
+        Derives concerns from the existing pathology flags and tissue type
+        so the backward feedback path always has something to work with.
+        """
+        tissue = pathology_report.tissue_type.replace("_", " ").title()
+        concerns: list[str] = []
+
+        if "high_abnormality_detected" in pathology_report.flags:
+            concerns.append(
+                f"Confirm nuclear atypia grade and mitotic figures in "
+                f"high-abnormality patches ({tissue})"
+            )
+        if "heterogeneous_tissue" in pathology_report.flags:
+            concerns.append(
+                "Clarify dominant tissue subtype — patch-level heterogeneity "
+                "may indicate mixed histology or sampling artefact"
+            )
+        if "high_diagnostic_uncertainty" in pathology_report.flags:
+            concerns.append(
+                "Re-assess classification confidence — MC Dropout flagged "
+                "high uncertainty; consider IHC panel for confirmation"
+            )
+
+        # Always include a tissue-specific generic concern
+        concerns.append(
+            f"Verify glandular / architectural patterns consistent with "
+            f"{tissue} vs differential diagnoses"
+        )
+
+        critique_text = (
+            f"Management plan confidence is {plan.confidence_score:.0%} — below "
+            f"the board's acceptance threshold.  The following morphological "
+            f"features require targeted re-evaluation before finalising treatment."
+        )
+
+        return {
+            "critique_text":               critique_text,
+            "specific_concerns":           concerns[:4],
+            "confidence_threshold_missed": plan.confidence_score,
+            "triggered_by":                "low_oncologist_confidence",
+        }
+
     def _fallback_revision(self, current_plan: ManagementPlan, critique: dict) -> dict:
         """Rule-based revision fallback when LLM unavailable."""
         recs = critique.get("specific_recommendations", [])

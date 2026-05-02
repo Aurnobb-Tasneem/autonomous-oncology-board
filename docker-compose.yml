@@ -77,5 +77,45 @@ services:
       - backend
     command: npm run dev
 
+  # ---------------------------------------------------------------------------
+  # vLLM — TNM Specialist (Track 2: Fine-Tuned LoRA adapter)
+  # ---------------------------------------------------------------------------
+  # NOTE: This service REQUIRES the AMD MI300X ROCm host.
+  # It must be run with: docker compose --profile amd up vllm-tnm
+  # (excluded from default `docker compose up` to prevent failures on
+  # non-AMD developer machines)
+  #
+  # The LoRA adapter must be trained first:
+  #   python scripts/finetune_tnm.py
+  #   bash scripts/serve_tnm_adapter.sh
+  # ---------------------------------------------------------------------------
+  vllm-tnm:
+    image: vllm/vllm-openai:latest          # use the ROCm build on MI300X
+    container_name: aob-vllm-tnm
+    profiles: ["amd"]
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./aob/ml/models/checkpoints/tnm_lora:/adapter:ro
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+    command: >
+      --model meta-llama/Llama-3.1-8B-Instruct
+      --enable-lora
+      --lora-modules tnm_specialist=/adapter
+      --port 8006
+      --gpu-memory-utilization 0.15
+      --max-model-len 2048
+      --dtype bfloat16
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: amdgpu
+              count: 1
+              capabilities: [gpu]
+
 volumes:
   qdrant_data:
+  huggingface_cache:

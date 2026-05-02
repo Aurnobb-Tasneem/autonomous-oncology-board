@@ -352,3 +352,101 @@ def _uniform_heatmap_b64() -> str:
     PILImage.fromarray(arr).save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
+
+# ── Raw Last-Block Attention Scores ──────────────────────────────────────────
+
+def extract_last_block_attention_scores(
+    model: nn.Module,
+    patch_tensor: torch.Tensor,
+    device: torch.device,
+) -> list[list[list[float]]]:
+    """
+    Extract raw CLS attention scores from GigaPath's last transformer block.
+
+    Unlike extract_attention_heatmap() which runs full Attention Rollout across
+    all layers and returns base64 PNG overlays, this function returns the raw
+    head-averaged attention map from blocks[-1] only.  This is the standard
+    DINO-style per-patch saliency score used by frontend ViT visualisation
+    libraries and enables interactive WebGL/canvas saliency rendering.
+
+    Architecture note:
+        GigaPath ViT-Giant, patch_size=16, input=224×224
+        → 14×14 = 196 patch tokens + 1 CLS token = 197 tokens per row/col
+        → blocks[-1].attn.attn_drop output: (1, num_heads, 197, 197)
+        → CLS row (index 0) → patch columns (indices 1..196) → reshape to 14×14
+
+    Args:
+        model:        GigaPath model (from load_gigapath), in eval mode.
+        patch_tensor: Preprocessed patches, shape (N, 3, 224, 224).
+        device:       Device the model lives on.
+
+    Returns:
+        List of N items, each a 14×14 list of floats in [0, 1].
+        Outer index = patch index; inner indices = (row, col) of the ViT grid.
+        Returns [] on any failure (graceful degradation).
+
+    Example (frontend usage):
+        scores = extract_last_block_attention_scores(model, patches, device)
+        # scores[0] is a 14×14 grid; scores[0][7][7] is the center token's score
+    """
+    try:
+        import numpy as np
+
+        grid_size = PATCH_SIZE // 16   # = 14 for GigaPath (patch_size=16)
+        n_patch_tokens = grid_size * grid_size  # = 196
+
+        all_scores: list[list[list[float]]] = []
+
+        for idx in range(len(patch_tensor)):
+            single = patch_tensor[idx : idx + 1].to(device)  # (1, 3, 224, 224)
+
+            # Capture last-block attention only
+            last_block_attn: list[torch.Tensor] = []
+
+            def _last_block_hook(module, input, output):
+                # output shape: (1, num_heads, 197, 197) — post-softmax, post-dropout
+                last_block_attn.append(output.detach().float().cpu())
+
+            handle = model.blocks[-1].attn.attn_drop.register_forward_hook(
+                _last_block_hook
+            )
+            try:
+                with torch.no_grad():
+                    _ = model(single)
+            finally:
+                handle.remove()
+
+            if not last_block_attn:
+                # Hook didn't fire — architecture mismatch; return uniform map
+                all_scores.append(
+                    [[1.0 / n_patch_tokens] * grid_size for _ in range(grid_size)]
+                )
+                continue
+
+            # last_block_attn[0]: (1, num_heads, 197, 197)
+            attn = last_block_attn[0][0]          # (num_heads, 197, 197)
+            attn_avg = attn.mean(dim=0)            # (197, 197) — head average
+
+            # CLS token (row 0) attending to each patch token (cols 1..196)
+            cls_to_patches = attn_avg[0, 1:]       # (196,)
+
+            # Normalise to [0, 1]
+            mn, mx = cls_to_patches.min(), cls_to_patches.max()
+            if mx - mn > 1e-8:
+                cls_to_patches = (cls_to_patches - mn) / (mx - mn)
+            else:
+                cls_to_patches = torch.zeros_like(cls_to_patches)
+
+            # Reshape to 14×14 grid and convert to nested Python lists (JSON-safe)
+            grid = cls_to_patches.reshape(grid_size, grid_size).numpy()
+            all_scores.append(
+                [[round(float(grid[r, c]), 4) for c in range(grid_size)]
+                 for r in range(grid_size)]
+            )
+
+        return all_scores
+
+    except Exception as e:
+        log.warning(f"GigaPath extract_last_block_attention_scores failed: {e}")
+        return []
+

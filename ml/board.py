@@ -38,6 +38,7 @@ from ml.agents.oncologist import OncologistAgent, ManagementPlan
 from ml.agents.meta_evaluator import MetaEvaluator
 from ml.agents.board_memory import BoardMemory
 from ml.agents.digital_twin import simulate_pfs
+from ml.agents.vlm_pathologist import VLMPathologistAgent, VLMOpinion
 from ml.models.llm_client import OllamaClient
 from ml.rag.retriever import OncologyRetriever
 
@@ -46,6 +47,10 @@ log = logging.getLogger(__name__)
 # Consensus threshold — scores below this trigger another debate round
 CONSENSUS_THRESHOLD = 70
 MAX_DEBATE_ROUNDS   = 3
+
+# If the Oncologist's initial confidence falls below this, the board triggers
+# a backward feedback pass: Oncologist → Pathologist (cross-agent feedback loop)
+LOW_CONFIDENCE_THRESHOLD = 0.60
 
 
 @dataclass
@@ -71,6 +76,11 @@ class BoardResult:
     debate_rounds: list[DebateRound] = field(default_factory=list)
     debate_enabled: bool = False
     heatmaps_b64: list[str] = field(default_factory=list)
+    # Task 2: Qwen2-VL second opinion + reconciliation
+    vlm_opinion: Optional[VLMOpinion] = None
+    vlm_reconciliation: Optional[dict] = None
+    # Task 3: Cross-agent backward feedback (Oncologist → Pathologist)
+    pathology_feedback: Optional[dict] = None
 
     def to_dict(self) -> dict:
         d = {
@@ -97,6 +107,12 @@ class BoardResult:
                 }
                 for r in self.debate_rounds
             ]
+        if self.vlm_opinion is not None:
+            d["vlm_opinion"] = self.vlm_opinion.to_dict()
+        if self.vlm_reconciliation is not None:
+            d["vlm_reconciliation"] = self.vlm_reconciliation
+        if self.pathology_feedback is not None:
+            d["pathology_feedback"] = self.pathology_feedback
         return d
 
 
@@ -143,6 +159,10 @@ class AutonomousOncologyBoard:
         self.researcher    = ResearcherAgent(llm_client=self.llm, retriever=self.retriever)
         self.oncologist    = OncologistAgent(llm_client=self.llm)
         self.meta_evaluator = MetaEvaluator(llm_client=self.llm)
+
+        # Agent 1b: Qwen2-VL-7B visual second opinion (Track 3 / Qwen Challenge)
+        # Lazy-loaded on first describe() call — no VRAM consumed until then.
+        self.vlm_pathologist = VLMPathologistAgent(hf_token=hf_token)
 
         # Board memory — persists cases for similar-case retrieval
         self.memory = BoardMemory()
@@ -226,6 +246,51 @@ class AutonomousOncologyBoard:
             else:
                 _emit("system", "🗃️ Board Memory: no similar past cases found (first run or cold start)", 34)
 
+        # ── Agent 1b: Qwen2-VL Second Opinion ────────────────────────────────
+        # Run Qwen2-VL-7B-Instruct directly on raw image pixels — independent
+        # of GigaPath's embedding space.  Capped at 4 patches for <10s latency.
+        _emit("vlm_pathologist", "Qwen2-VL-7B: requesting visual second opinion on patches...", 40)
+        vlm_opinion = self.vlm_pathologist.describe(images[:4])
+        if vlm_opinion.error:
+            _emit(
+                "vlm_pathologist",
+                f"Qwen2-VL skipped ({vlm_opinion.error}) — proceeding without VLM input",
+                41,
+            )
+        else:
+            _emit(
+                "vlm_pathologist",
+                f"Qwen2-VL: '{vlm_opinion.suspected_tissue_type}' — "
+                f"{vlm_opinion.aggregate_description[:100]}...",
+                42,
+            )
+            if vlm_opinion.malignancy_indicators:
+                _emit(
+                    "vlm_pathologist",
+                    f"Malignancy indicators: {', '.join(vlm_opinion.malignancy_indicators[:4])}",
+                    43,
+                )
+
+        # VLM ↔ GigaPath reconciliation (before Researcher so consensus tissue
+        # type is available to the Oncologist's context)
+        _emit("system", "Reconciling GigaPath ↔ Qwen2-VL findings...", 44)
+        vlm_reconciliation: Optional[dict] = None
+        if vlm_opinion.is_available:
+            vlm_reconciliation = self.meta_evaluator.reconcile(pathology, vlm_opinion)
+            agreement = vlm_reconciliation.get("agreement_score", -1)
+            combined_tissue = vlm_reconciliation.get("combined_tissue_type", "")
+            _emit(
+                "system",
+                f"VLM reconciliation: agreement={agreement}/100  "
+                f"consensus_tissue='{combined_tissue}'",
+                45,
+            )
+            discrepancies = vlm_reconciliation.get("discrepancies", [])
+            for disc in discrepancies[:2]:
+                _emit("system", f"  ↳ Discrepancy: {disc}", 45)
+        else:
+            _emit("system", "VLM reconciliation skipped (VLM unavailable)", 45)
+
         # ── Agent 2: Researcher ──────────────────────────────────────────────
         _emit("researcher", "Building clinical query from pathology findings", 35)
         research = self.researcher.research(pathology, metadata=metadata)
@@ -252,6 +317,60 @@ class AutonomousOncologyBoard:
             72,
         )
 
+        # ── Cross-Agent Feedback Loop (Task 3) ───────────────────────────────
+        # If the Oncologist's initial confidence is below the threshold, it
+        # sends a structured text critique back to the Pathologist before the
+        # multi-round debate begins.  This is the "backward gradient" from
+        # Oncologist → Pathologist — a named, visible pipeline stage in the
+        # SSE timeline that strengthens the board's consensus argument.
+        pathology_feedback: Optional[dict] = None
+        if plan.confidence_score < LOW_CONFIDENCE_THRESHOLD:
+            _emit(
+                "oncologist",
+                f"Confidence {plan.confidence_score:.0%} below threshold "
+                f"({LOW_CONFIDENCE_THRESHOLD:.0%}) — triggering cross-agent "
+                f"feedback loop to Pathologist",
+                73,
+            )
+            clarification = self.oncologist.request_pathology_clarification(
+                plan, pathology
+            )
+            concerns = clarification.get("specific_concerns", [])
+            _emit(
+                "oncologist",
+                f"Pathology clarification requested: {clarification.get('critique_text', '')[:100]}...",
+                73,
+            )
+            for concern in concerns[:2]:
+                _emit("oncologist", f"  Concern: {concern}", 73)
+
+            referee_response = self.pathologist.referee(
+                original_report=pathology,
+                flagged_issues=concerns,
+            )
+            pathology_feedback = {**clarification, **referee_response}
+
+            _emit(
+                "pathologist",
+                f"Pathologist feedback: {referee_response.get('referee_note', '')[:120]}...",
+                74,
+            )
+            morphology_ok = referee_response.get("morphology_confirmed", True)
+            _emit(
+                "pathologist",
+                f"Morphology {'confirmed' if morphology_ok else 'unconfirmed'} "
+                f"— updated confidence: "
+                f"{referee_response.get('updated_confidence', 0):.0%}",
+                74,
+            )
+        else:
+            _emit(
+                "system",
+                f"Oncologist confidence {plan.confidence_score:.0%} ≥ threshold "
+                f"— cross-agent feedback loop not required",
+                73,
+            )
+
         debate_rounds: list[DebateRound] = []
 
         # ── Agent Debate Loop ─────────────────────────────────────────────────
@@ -262,6 +381,7 @@ class AutonomousOncologyBoard:
                 pathology=pathology,
                 research=research,
                 emit=_emit,
+                vlm_reconciliation=vlm_reconciliation,
             )
 
         # ── Digital Twin: 12-month PFS prediction ─────────────────────────
@@ -290,6 +410,9 @@ class AutonomousOncologyBoard:
             debate_rounds=debate_rounds,
             debate_enabled=debate_mode,
             heatmaps_b64=heatmaps,
+            vlm_opinion=vlm_opinion,
+            vlm_reconciliation=vlm_reconciliation,
+            pathology_feedback=pathology_feedback,
         )
 
         # ── Board Memory: save this case for future similar-case retrieval ───
@@ -315,6 +438,7 @@ class AutonomousOncologyBoard:
         pathology: PathologyReport,
         research: ResearchSummary,
         emit: StepCallback,
+        vlm_reconciliation: Optional[dict] = None,
     ) -> tuple[ManagementPlan, list[DebateRound]]:
         """
         Run the multi-round Agent Debate loop.
@@ -323,8 +447,14 @@ class AutonomousOncologyBoard:
           1. Researcher challenges the draft plan (RAG-grounded critique)
           2. If morphological doubts → Pathologist referee re-evaluates
           3. Oncologist revises the plan
-          4. MetaEvaluator scores consensus (0–100)
+          4. MetaEvaluator scores consensus (0–100), informed by VLM reconciliation
           5. If score < CONSENSUS_THRESHOLD and rounds < MAX → repeat
+
+        Args:
+            vlm_reconciliation: Output of MetaEvaluator.reconcile() run before
+                the debate loop. Injected into the evaluate() prompt as additional
+                context so the MetaEvaluator can factor in VLM ↔ GigaPath
+                agreement when scoring each revision.
 
         Returns:
             (final_plan, list_of_debate_rounds)
@@ -411,11 +541,26 @@ class AutonomousOncologyBoard:
             })
 
             # ── Step D: MetaEvaluator scores consensus ───────────────────────
+            # Augment the critique with VLM reconciliation context so the
+            # evaluator can factor in pixel-level visual agreement when scoring.
             emit("system", f"Round {round_num}: evaluating consensus...", 86)
+            augmented_critique = challenge_text
+            if vlm_reconciliation and vlm_reconciliation.get("agreement_score", -1) >= 0:
+                vlm_context = (
+                    f" [VLM context — Qwen2-VL agreement: "
+                    f"{vlm_reconciliation.get('agreement_score')}/100, "
+                    f"consensus tissue: '{vlm_reconciliation.get('combined_tissue_type', 'unknown')}'"
+                )
+                discrepancies = vlm_reconciliation.get("discrepancies", [])
+                if discrepancies:
+                    vlm_context += f", discrepancies: {'; '.join(discrepancies[:2])}"
+                vlm_context += "]"
+                augmented_critique = challenge_text + vlm_context
+
             meta_result = self.meta_evaluator.evaluate(
                 original_first_line=current_plan.treatment_plan.first_line,
                 original_actions=current_plan.immediate_actions,
-                critique=challenge_text,
+                critique=augmented_critique,
                 revised_first_line=revised_plan.treatment_plan.first_line,
                 revised_actions=revised_plan.immediate_actions,
                 revised_notes=revision_notes,

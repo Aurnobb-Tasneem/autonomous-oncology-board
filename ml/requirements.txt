@@ -46,6 +46,18 @@ accelerate>=0.28.0            # Required by some HF model loading paths
 tokenizers>=0.19.0
 
 # --------------------------------------------------------------------------- #
+# Vision-Language Model (Task 2: Qwen2-VL second opinion)                     #
+# --------------------------------------------------------------------------- #
+qwen-vl-utils>=0.0.8          # Qwen2-VL image preprocessing utilities
+
+# --------------------------------------------------------------------------- #
+# Fine-tuning / PEFT (Task 1: TNM LoRA specialist)                            #
+# --------------------------------------------------------------------------- #
+peft>=0.11.0                  # LoRA / PEFT adapters
+datasets>=2.19.0              # HuggingFace Datasets (mock + real TNM training data)
+optimum[amd]>=1.20.0          # Optimum-AMD ROCm graph optimizations
+
+# --------------------------------------------------------------------------- #
 # Agent Orchestration — custom state machine in board.py (no extra deps)      #
 # --------------------------------------------------------------------------- #
 

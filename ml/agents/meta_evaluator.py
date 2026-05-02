@@ -137,3 +137,138 @@ Return only the JSON. No markdown."""
             "addressed_points": ["Plan updated"] if changed else [],
             "unaddressed_points": [] if changed else ["No changes detected"],
         }
+
+    # ── VLM Reconciliation ────────────────────────────────────────────────────
+
+    def reconcile(
+        self,
+        gigapath_report,   # ml.agents.pathologist.PathologyReport
+        vlm_opinion,       # ml.agents.vlm_pathologist.VLMOpinion
+    ) -> dict:
+        """
+        Reconcile GigaPath embedding-based classification with Qwen2-VL visual
+        morphology output to produce a cross-model agreement assessment.
+
+        This is called once per board run, before the debate loop, to surface
+        any disagreements between the vision foundation model (GigaPath) and the
+        vision-language model (Qwen2-VL) early — so the Oncologist can factor
+        in both signals.
+
+        Args:
+            gigapath_report: PathologyReport from Agent 1 (GigaPath embeddings).
+            vlm_opinion:     VLMOpinion from Agent 1b (Qwen2-VL pixel analysis).
+
+        Returns:
+            dict with keys:
+              agreement_score     (int 0–100)
+              agreement_summary   (str)
+              discrepancies       (list[str])
+              combined_tissue_type  (str)   — consensus tissue label
+              combined_morphology   (list[str]) — merged feature list
+              vlm_added_findings    (list[str]) — VLM-only observations
+        """
+        # If VLM was unavailable, return a neutral pass-through result
+        if not vlm_opinion.is_available:
+            log.info(
+                "MetaEvaluator.reconcile: VLM opinion unavailable "
+                f"({vlm_opinion.error}) — skipping reconciliation"
+            )
+            return {
+                "agreement_score":      -1,
+                "agreement_summary":    f"VLM unavailable: {vlm_opinion.error}",
+                "discrepancies":        [],
+                "combined_tissue_type": gigapath_report.tissue_type,
+                "combined_morphology":  gigapath_report.flags,
+                "vlm_added_findings":   [],
+            }
+
+        prompt = f"""You are a senior pathology peer reviewer comparing two independent analyses
+of the same histopathology case.
+
+ANALYSIS A — GigaPath (embedding-based, ViT-Giant foundation model):
+  Tissue classification : {gigapath_report.tissue_type.replace("_", " ").title()}
+  Confidence            : {gigapath_report.confidence:.0%}
+  Flags                 : {', '.join(gigapath_report.flags) if gigapath_report.flags else 'none'}
+  Summary               : {gigapath_report.summary[:300]}
+
+ANALYSIS B — Qwen2-VL-7B-Instruct (pixel-based VLM, direct image reading):
+  Suspected tissue type   : {vlm_opinion.suspected_tissue_type}
+  Malignancy indicators   : {', '.join(vlm_opinion.malignancy_indicators) if vlm_opinion.malignancy_indicators else 'none identified'}
+  Morphology description  : {vlm_opinion.aggregate_description[:400]}
+  Patches analysed        : {vlm_opinion.n_patches_processed}
+
+Your tasks:
+1. Score agreement between the two analyses (0–100).
+   100 = full agreement on tissue type and malignancy.
+   0   = complete disagreement (e.g. one says malignant lung, other says benign colon).
+2. Identify any discrepancies.
+3. Propose a combined consensus tissue type.
+4. List morphological features mentioned by ONLY Analysis B (VLM-added findings).
+
+Return ONLY valid JSON with exactly these fields:
+{{
+  "agreement_score": 82,
+  "agreement_summary": "Both models agree on lung adenocarcinoma with glandular features...",
+  "discrepancies": ["GigaPath flagged high abnormality; VLM did not mention mitotic figures"],
+  "combined_tissue_type": "lung adenocarcinoma",
+  "combined_morphology": ["glandular patterns", "nuclear atypia", "irregular borders"],
+  "vlm_added_findings": ["micropapillary architecture noted in patch 2"]
+}}"""
+
+        try:
+            if not self.llm.ping():
+                log.warning("MetaEvaluator.reconcile: LLM unavailable — using heuristic")
+                return self._heuristic_reconcile(gigapath_report, vlm_opinion)
+
+            response = self.llm.generate_sync(
+                prompt=prompt,
+                system=(
+                    "You are a neutral pathology peer reviewer. "
+                    "Output valid JSON only — no markdown fences, no preamble."
+                ),
+                temperature=0.05,
+                max_tokens=500,
+            )
+            text = response.text.strip()
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            result = json.loads(match.group() if match else text)
+
+            score = int(result.get("agreement_score", 75))
+            log.info(
+                f"MetaEvaluator.reconcile: agreement_score={score}  "
+                f"combined_tissue='{result.get('combined_tissue_type', 'unknown')}'"
+            )
+            return result
+
+        except Exception as e:
+            log.warning(f"MetaEvaluator.reconcile: failed ({e}), using heuristic")
+            return self._heuristic_reconcile(gigapath_report, vlm_opinion)
+
+    def _heuristic_reconcile(self, gigapath_report, vlm_opinion) -> dict:
+        """
+        Heuristic reconciliation when the LLM is unavailable.
+
+        Checks whether GigaPath's tissue_type string appears in the VLM's
+        aggregate description — a simple but reliable proxy for agreement.
+        """
+        gp_tissue = gigapath_report.tissue_type.replace("_", " ").lower()
+        vlm_desc  = vlm_opinion.aggregate_description.lower()
+
+        # Token-level partial match (e.g. "lung" in a longer description)
+        gp_tokens = [t for t in gp_tissue.split() if len(t) > 3]
+        token_hits = sum(1 for t in gp_tokens if t in vlm_desc)
+        agreement  = 85 if token_hits >= len(gp_tokens) // 2 + 1 else 55
+
+        return {
+            "agreement_score":     agreement,
+            "agreement_summary":   (
+                f"Heuristic: GigaPath ({gp_tissue}) token overlap "
+                f"{token_hits}/{len(gp_tokens)} with VLM description."
+            ),
+            "discrepancies":       [] if agreement >= 80 else [
+                "Tissue type labels differ between GigaPath and VLM — manual review recommended."
+            ],
+            "combined_tissue_type":  gigapath_report.tissue_type,
+            "combined_morphology":   gigapath_report.flags,
+            "vlm_added_findings":    vlm_opinion.malignancy_indicators,
+        }

@@ -52,6 +52,7 @@ from ml.models.gigapath_loader import (
     load_gigapath,
     embed_patches,
     extract_attention_heatmap,
+    extract_last_block_attention_scores,
     build_transform,
     EMBEDDING_DIM,
 )
@@ -517,3 +518,46 @@ class PathologistAgent:
         )
         log.info(f"PathologistAgent: {len(heatmaps)} heatmaps generated")
         return heatmaps
+
+    def generate_raw_attention_scores(
+        self,
+        images: list[Image.Image],
+        max_patches: int = 8,
+    ) -> list[list[list[float]]]:
+        """
+        Return raw last-block CLS attention scores for frontend saliency rendering.
+
+        Unlike generate_heatmaps() which produces pre-rendered base64 PNG overlays
+        (full Attention Rollout, all blocks), this method returns the raw 14×14
+        float grid from GigaPath's last transformer block only.  The frontend can
+        use these scores to drive WebGL/canvas interactive saliency visualisations.
+
+        Output format: list of N items, each a 14×14 list of floats in [0, 1].
+            scores[patch_idx][row][col] = attention weight for that ViT patch token.
+
+        Args:
+            images:      List of PIL.Image patches.
+            max_patches: Cap to prevent OOM (default 8).
+
+        Returns:
+            Nested list serialisable directly to JSON.
+            Returns [] on failure (graceful degradation).
+        """
+        self._ensure_model_loaded()
+        imgs = images[:max_patches]
+        log.info(
+            f"PathologistAgent: extracting raw last-block attention scores "
+            f"for {len(imgs)} patches"
+        )
+
+        patch_tensor = self.preprocess_images(imgs)
+        scores = extract_last_block_attention_scores(
+            model=self._model,
+            patch_tensor=patch_tensor,
+            device=self._device,
+        )
+        log.info(
+            f"PathologistAgent: raw attention scores extracted "
+            f"({len(scores)} patches, 14×14 grid each)"
+        )
+        return scores
