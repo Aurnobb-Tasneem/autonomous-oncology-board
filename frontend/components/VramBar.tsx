@@ -18,11 +18,11 @@ export default function VramBar() {
     } catch {
       // API not reachable — show mock
       setVram({
-        used_gb: 52.4,
+        used_gb: 102.3,
         total_gb: 192,
-        free_gb: 139.6,
-        percent_used: 27.3,
-        model_breakdown: { gigapath_gb: 2.1, llama_gb: 38.0, kv_cache_gb: 12.3 },
+        free_gb: 89.7,
+        percent_used: 53.4,
+        model_breakdown: { gigapath_gb: 3.2, llama_gb: 40.0, qwen_vl_gb: 15.4, llama_8b_gb: 16.0, tnm_lora_gb: 1.8, kv_cache_gb: 25.9 },
         source: "mock",
       });
       setAnimIn(true);
@@ -92,8 +92,11 @@ export default function VramBar() {
             {[
               { label: "GigaPath", val: vram.model_breakdown.gigapath_gb },
               { label: "Llama 70B", val: vram.model_breakdown.llama_gb },
+              { label: "Qwen2.5-VL", val: vram.model_breakdown.qwen_vl_gb },
+              { label: "Llama 8B Base", val: vram.model_breakdown.llama_8b_gb },
+              { label: "TNM LoRA", val: vram.model_breakdown.tnm_lora_gb },
               { label: "KV Cache", val: vram.model_breakdown.kv_cache_gb },
-            ].map((m) => (
+            ].filter((m) => m.val !== undefined).map((m) => (
               <span key={m.label} style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
                 <span style={{ color: "var(--teal-light)" }}>●</span> {m.label}{" "}
                 <span style={{ color: "var(--text-dim)" }}>{m.val} GB</span>
@@ -149,7 +152,7 @@ export default function VramBar() {
           </div>
         </div>
         <p style={{ fontSize: "0.72rem", color: "rgba(239,68,68,0.7)", marginTop: "0.3rem" }}>
-          GigaPath (2.1 GB) + Llama 3.3 70B (38 GB) = 52+ GB needed simultaneously
+          GigaPath (3.2) + Llama 70B (40) + Qwen-VL (15.4) + Llama 8B (16) + LoRA (1.8) + KV (25.9) = 102.3 GB &gt; 80 GB limit
         </p>
       </div>
 

@@ -451,9 +451,9 @@ async def get_vram():
     except Exception as e:
         log.warning(f"rocm-smi failed: {e} — returning mock data")
         # Mock data for local dev / non-AMD hosts
-        used_gb  = 3.6
+        used_gb  = 102.3
         total_gb = 191.7
-        pct      = 1.9
+        pct      = 53.4
 
     return {
         "used_gb":    used_gb,
@@ -463,8 +463,11 @@ async def get_vram():
         "exceeds_h100": used_gb > 80.0,
         "model_breakdown": {
             "gigapath_gb":  3.2,   # Prov-GigaPath ViT-Giant in Docker
-            "llama_70b_gb": 40.0,  # Llama 3.3 70B via Ollama on host
-            "kv_cache_gb":  max(0.0, round(used_gb - 43.2, 1)),
+            "llama_gb":     40.0,  # Llama 3.3 70B via Ollama on host
+            "qwen_vl_gb":   15.4,  # Qwen2.5-VL-7B-Instruct
+            "llama_8b_gb":  16.0,  # Llama 3.1 8B base for TNM LoRA
+            "tnm_lora_gb":  1.8,   # TNM Staging Specialist LoRA
+            "kv_cache_gb":  max(0.0, round(used_gb - 76.4, 1)),
         },
         "hardware": "AMD Instinct MI300X · 192 GB HBM3",
         "timestamp": datetime.now(timezone.utc).isoformat(),

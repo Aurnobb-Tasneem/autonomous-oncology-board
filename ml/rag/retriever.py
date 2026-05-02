@@ -164,12 +164,22 @@ class OncologyRetriever:
         """Live retrieval from Qdrant vector database."""
         query_vector = self._embedder.encode(query).tolist()
 
-        results = self._client.search(
-            collection_name=self.collection,
-            query_vector=query_vector,
-            limit=top_k,
-            with_payload=True,
-        )
+        # Use query_points for qdrant-client >= 1.10.0, fallback to search for older versions
+        if hasattr(self._client, "query_points"):
+            response = self._client.query_points(
+                collection_name=self.collection,
+                query=query_vector,
+                limit=top_k,
+                with_payload=True,
+            )
+            results = response.points
+        else:
+            results = self._client.search(
+                collection_name=self.collection,
+                query_vector=query_vector,
+                limit=top_k,
+                with_payload=True,
+            )
 
         docs = []
         for hit in results:
