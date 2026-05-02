@@ -96,7 +96,7 @@ services:
     ports:
       - "8006:8006"
     volumes:
-      - ./aob/ml/models/checkpoints/tnm_lora:/adapter:ro
+      - ./ml/models/checkpoints/tnm_lora:/adapter:ro
       - huggingface_cache:/root/.cache/huggingface
     environment:
       HF_TOKEN: ${HF_TOKEN}
@@ -108,13 +108,14 @@ services:
       --gpu-memory-utilization 0.15
       --max-model-len 2048
       --dtype bfloat16
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: amdgpu
-              count: 1
-              capabilities: [gpu]
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
 
 volumes:
   qdrant_data:
