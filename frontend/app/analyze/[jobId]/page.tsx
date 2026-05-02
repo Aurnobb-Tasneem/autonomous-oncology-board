@@ -319,7 +319,7 @@ export default function AnalyzePage() {
           </div>
 
           <aside style={{ position: "sticky", top: "80px", justifySelf: "stretch" }}>
-            <VramBar />
+            <VramBar compact />
             <p style={{ marginTop: "0.75rem", fontSize: "0.72rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
               Polls <span style={{ fontFamily: "monospace" }}>/api/vram</span> (rocm-smi JSON on the MI300X host). If you run the UI away from the API origin, point{" "}
               <span style={{ fontFamily: "monospace" }}>NEXT_PUBLIC_API_URL</span> at the FastAPI server.

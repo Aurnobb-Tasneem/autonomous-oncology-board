@@ -7,10 +7,7 @@ interface AgentTimelineProps {
   elapsed: number;
 }
 
-// NOTE: The Python board currently does not emit a dedicated `tnm_specialist` SSE agent —
-// TNM appears inside the Oncologist/ManagementPlan output. Keep the live grid aligned with
-// what the backend actually streams to avoid a permanently-empty column.
-const AGENTS: AgentId[] = ["pathologist", "second_opinion", "researcher", "oncologist"];
+const AGENTS: AgentId[] = ["pathologist", "second_opinion", "researcher", "tnm_specialist", "oncologist"];
 
 const ACTIVE_TEAL = "#0f766e";
 const ACTIVE_GLASS_BG = "rgba(7, 23, 31, 0.55)";
@@ -54,6 +51,21 @@ function normalizeAgentId(raw: string): AgentId | null {
 }
 
 function getAgent(step: SseStep): AgentId {
+  // Heuristic: if a step message is explicitly about TNM/staging, show it in the TNM column
+  // even when the backend reports it under system/oncologist.
+  const msg = (step.message ?? "").toLowerCase();
+  if (
+    msg.includes("tnm") ||
+    msg.includes("staging") ||
+    msg.includes("ajcc") ||
+    msg.includes("stage i") ||
+    msg.includes("stage ii") ||
+    msg.includes("stage iii") ||
+    msg.includes("stage iv")
+  ) {
+    return "tnm_specialist";
+  }
+
   const fromAgent = typeof step.agent === "string" ? normalizeAgentId(step.agent) : null;
   if (fromAgent) return fromAgent;
   const fromType = normalizeAgentId(step.type ?? "");
@@ -70,7 +82,7 @@ export default function AgentTimeline({ steps, elapsed }: AgentTimelineProps) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(5, 1fr)",
           gap: "1rem",
           marginBottom: "1rem",
         }}

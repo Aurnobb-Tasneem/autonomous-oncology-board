@@ -6,7 +6,7 @@ import { getVram, type VramInfo } from "@/lib/api";
 const H100_MAX = 80;
 const MI300X_MAX = 192;
 
-export default function VramBar() {
+export default function VramBar({ compact = false }: { compact?: boolean }) {
   const [vram, setVram] = useState<VramInfo | null>(null);
   const [animIn, setAnimIn] = useState(false);
 
@@ -38,36 +38,44 @@ export default function VramBar() {
   const mi300xPct = vram ? Math.min((vram.used_gb / MI300X_MAX) * 100, 100) : 0;
   const h100Pct = 100; // always OOM
 
+  const pad = compact ? "1rem" : "1.5rem";
+  const headerMb = compact ? "0.85rem" : "1.25rem";
+  const barH = compact ? "14px" : "20px";
+  const titleSize = compact ? "0.88rem" : "0.95rem";
+  const smallSize = compact ? "0.7rem" : "0.75rem";
+  const labelSize = compact ? "0.78rem" : "0.82rem";
+  const breakdownSize = compact ? "0.68rem" : "0.72rem";
+
   return (
-    <div className="glass-card" style={{ padding: "1.5rem" }}>
+    <div className="glass-card" style={{ padding: pad }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-        <h3 style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-primary)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: headerMb }}>
+        <h3 style={{ fontWeight: 700, fontSize: titleSize, color: "var(--text-primary)" }}>
           Live VRAM Usage
         </h3>
         <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
           <div className="pulse-dot pulse-dot-teal" />
-          <span style={{ fontSize: "0.75rem", color: "var(--teal-light)" }}>Live</span>
+          <span style={{ fontSize: smallSize, color: "var(--teal-light)" }}>Live</span>
           {vram?.source === "mock" && (
-            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginLeft: "0.25rem" }}>(demo)</span>
+            <span style={{ fontSize: compact ? "0.66rem" : "0.7rem", color: "var(--text-muted)", marginLeft: "0.25rem" }}>(demo)</span>
           )}
         </div>
       </div>
 
       {/* MI300X bar */}
-      <div style={{ marginBottom: "1.25rem" }}>
+      <div style={{ marginBottom: compact ? "1rem" : "1.25rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
-          <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--teal-light)" }}>
+          <span style={{ fontSize: labelSize, fontWeight: 600, color: "var(--teal-light)" }}>
             AMD MI300X 192 GB HBM3
           </span>
-          <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+          <span style={{ fontSize: labelSize, color: "var(--text-muted)" }}>
             {vram ? `${vram.used_gb.toFixed(1)} / ${MI300X_MAX} GB` : "—"}
           </span>
         </div>
         {/* Track */}
         <div
           style={{
-            height: "20px",
+            height: barH,
             background: "rgba(255,255,255,0.05)",
             borderRadius: "10px",
             overflow: "hidden",
@@ -97,7 +105,7 @@ export default function VramBar() {
               { label: "TNM LoRA", val: vram.model_breakdown.tnm_lora_gb },
               { label: "KV Cache", val: vram.model_breakdown.kv_cache_gb },
             ].filter((m) => m.val !== undefined).map((m) => (
-              <span key={m.label} style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+              <span key={m.label} style={{ fontSize: breakdownSize, color: "var(--text-muted)" }}>
                 <span style={{ color: "var(--teal-light)" }}>●</span> {m.label}{" "}
                 <span style={{ color: "var(--text-dim)" }}>{m.val} GB</span>
               </span>
@@ -109,12 +117,12 @@ export default function VramBar() {
       {/* H100 bar — always OOM */}
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
-          <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--danger)" }}>
+          <span style={{ fontSize: labelSize, fontWeight: 600, color: "var(--danger)" }}>
             H100 SXM5 80 GB
           </span>
           <span
             style={{
-              fontSize: "0.75rem",
+              fontSize: smallSize,
               background: "rgba(239,68,68,0.15)",
               border: "1px solid rgba(239,68,68,0.4)",
               color: "var(--danger)",
@@ -128,7 +136,7 @@ export default function VramBar() {
         </div>
         <div
           style={{
-            height: "20px",
+            height: barH,
             background: "rgba(239,68,68,0.08)",
             borderRadius: "10px",
             overflow: "hidden",
@@ -146,12 +154,12 @@ export default function VramBar() {
               justifyContent: "center",
             }}
           >
-            <span style={{ fontSize: "0.7rem", color: "white", fontWeight: 700, letterSpacing: "0.05em" }}>
+            <span style={{ fontSize: compact ? "0.64rem" : "0.7rem", color: "white", fontWeight: 700, letterSpacing: "0.05em" }}>
               OUT OF MEMORY — Cannot load both models
             </span>
           </div>
         </div>
-        <p style={{ fontSize: "0.72rem", color: "rgba(239,68,68,0.7)", marginTop: "0.3rem" }}>
+        <p style={{ fontSize: breakdownSize, color: "rgba(239,68,68,0.7)", marginTop: "0.3rem" }}>
           GigaPath (3.2) + Llama 70B (40) + Qwen-VL (15.4) + Llama 8B (16) + LoRA (1.8) + KV (25.9) = 102.3 GB &gt; 80 GB limit
         </p>
       </div>
@@ -162,7 +170,7 @@ export default function VramBar() {
           marginTop: "1rem",
           paddingTop: "0.75rem",
           borderTop: "1px solid var(--border)",
-          fontSize: "0.72rem",
+          fontSize: breakdownSize,
           color: "var(--text-muted)",
           textAlign: "center",
         }}
