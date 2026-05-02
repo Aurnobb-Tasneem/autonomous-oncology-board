@@ -513,6 +513,10 @@ def run_training(args: argparse.Namespace):
     # fails.  We wrap in a try/finally so training always proceeds.
     model, optimum_applied = apply_optimum_amd(model)
 
+    # Required for gradient checkpointing with PEFT
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
+
     # ── 5. LoRA ───────────────────────────────────────────────────────────
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
