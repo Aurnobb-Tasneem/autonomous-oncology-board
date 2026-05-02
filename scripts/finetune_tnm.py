@@ -527,7 +527,8 @@ def run_training(args: argparse.Namespace):
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
-    trainable, total, pct = model.get_nb_trainable_parameters()
+    trainable, total = model.get_nb_trainable_parameters()
+    pct = 100 * trainable / total if total > 0 else 0
     log.info(
         f"LoRA: trainable params = {trainable:,} / {total:,} ({pct:.2f}%) "
         f"  r={args.lora_r}  alpha={args.lora_alpha}"
