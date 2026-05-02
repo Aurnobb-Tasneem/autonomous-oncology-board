@@ -454,21 +454,57 @@ async def get_vram():
         used_gb  = 102.3
         total_gb = 191.7
         pct      = 53.4
+        source   = "mock"
+    else:
+        source = "rocm-smi"
+
+    # ── Per-process VRAM (best-effort — requires ROCm ≥ 5.5) ──────────────
+    # Try rocm-smi --showpids to get per-PID breakdown; used only for KV cache
+    # estimation.  Falls back to a formula if unavailable.
+    try:
+        pid_result = subprocess.run(
+            ["rocm-smi", "--showpids"],
+            capture_output=True, text=True, timeout=5,
+        )
+        # rocm-smi --showpids prints lines like:
+        #   PID  PROCESS NAME   GPU[0] VRAM USED   GFX%  ...
+        # Parse the VRAM column for all PIDs and sum to get a better estimate
+        # of actively used VRAM (vs OS-reserved total).
+        # This is a best-effort heuristic; exact KV cache isolation requires
+        # vLLM internal metrics.
+        import re as _re
+        pid_vram_bytes = sum(
+            int(m) for m in _re.findall(r"(\d{6,})", pid_result.stdout)
+        )
+        if pid_vram_bytes > 0:
+            pid_vram_gb = round(pid_vram_bytes / 1e9, 1)
+        else:
+            pid_vram_gb = None
+    except Exception:
+        pid_vram_gb = None
+
+    # Always-resident model baseline (GigaPath + Llama 3.3 70B via Ollama)
+    _BASELINE_GB = 43.2   # 3.2 (GigaPath) + 40.0 (Llama 70B)
+    kv_cache_gb  = max(0.0, round(used_gb - _BASELINE_GB, 1))
 
     return {
         "used_gb":    used_gb,
         "total_gb":   total_gb,
         "percent":    pct,
-        "h100_limit_gb": 80.0,   # H100 VRAM ceiling — for comparison bar
+        "free_gb":    round(total_gb - used_gb, 1),
+        "percent_used": pct,
+        "source":     source,
+        "h100_limit_gb": 80.0,
         "exceeds_h100": used_gb > 80.0,
         "model_breakdown": {
-            "gigapath_gb":  3.2,   # Prov-GigaPath ViT-Giant in Docker
-            "llama_gb":     40.0,  # Llama 3.3 70B via Ollama on host
-            "qwen_vl_gb":   15.4,  # Qwen2.5-VL-7B-Instruct
-            "llama_8b_gb":  16.0,  # Llama 3.1 8B base for TNM LoRA
-            "tnm_lora_gb":  1.8,   # TNM Staging Specialist LoRA
-            "kv_cache_gb":  max(0.0, round(used_gb - 76.4, 1)),
+            "gigapath_gb":  3.2,    # Prov-GigaPath ViT-Giant (always resident)
+            "llama_gb":     40.0,   # Llama 3.3 70B via Ollama (always resident)
+            "qwen_vl_gb":   15.4,   # Qwen2.5-VL-7B-Instruct (loaded on demand)
+            "llama_8b_gb":  16.0,   # Llama 3.1 8B TNM base (vLLM, if running)
+            "tnm_lora_gb":  1.8,    # TNM LoRA adapter overhead
+            "kv_cache_gb":  kv_cache_gb,   # Derived: total − always-resident baseline
         },
+        "pid_vram_gb": pid_vram_gb,  # Per-process total (null if rocm-smi --showpids unavailable)
         "hardware": "AMD Instinct MI300X · 192 GB HBM3",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

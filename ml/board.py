@@ -39,6 +39,7 @@ from ml.agents.meta_evaluator import MetaEvaluator
 from ml.agents.board_memory import BoardMemory
 from ml.agents.digital_twin import simulate_pfs
 from ml.agents.vlm_pathologist import VLMPathologistAgent, VLMOpinion
+from ml.agents.staging_specialist import StagingSpecialistAgent, TNMResult
 from ml.models.llm_client import OllamaClient
 from ml.rag.retriever import OncologyRetriever
 
@@ -163,6 +164,10 @@ class AutonomousOncologyBoard:
         # Agent 1b: Qwen2-VL-7B visual second opinion (Track 3 / Qwen Challenge)
         # Lazy-loaded on first describe() call — no VRAM consumed until then.
         self.vlm_pathologist = VLMPathologistAgent(hf_token=hf_token)
+
+        # Agent 2b: Llama-3.1-8B LoRA TNM Staging Specialist (Track 2)
+        # Calls vLLM at localhost:8006. Gracefully falls back if vLLM is not running.
+        self.staging_specialist = StagingSpecialistAgent()
 
         # Board memory — persists cases for similar-case retrieval
         self.memory = BoardMemory()
@@ -301,6 +306,37 @@ class AutonomousOncologyBoard:
             52,
         )
         _emit("researcher", f"Synthesised {len(research.treatment_options)} treatment options", 56)
+
+        # ── Agent 2b: TNM Staging Specialist (Llama-3.1-8B LoRA) ─────────────
+        # Calls the fine-tuned LoRA adapter via vLLM at :8006.
+        # Falls back gracefully if vLLM is not running — pipeline continues.
+        tnm_result: Optional[TNMResult] = None
+        try:
+            _emit("tnm_specialist", "Llama-3.1-8B LoRA: running TNM staging specialist...", 57)
+            tnm_result = self.staging_specialist.stage(
+                pathology_text=pathology.summary or pathology.tissue_type,
+            )
+            if tnm_result.is_fallback:
+                _emit(
+                    "tnm_specialist",
+                    f"TNM specialist unavailable ({tnm_result.error}) — Oncologist will infer staging",
+                    58,
+                )
+            else:
+                _emit(
+                    "tnm_specialist",
+                    f"TNM result: {tnm_result.tnm_string()} "
+                    f"(confidence: {tnm_result.confidence}, latency: {tnm_result.latency_ms:.0f}ms)",
+                    58,
+                )
+                _emit(
+                    "tnm_specialist",
+                    f"AJCC Stage {tnm_result.stage} — T:{tnm_result.T}  N:{tnm_result.N}  M:{tnm_result.M}",
+                    59,
+                )
+        except Exception as tnm_err:
+            log.warning(f"Board: TNM specialist error ({tnm_err}) — continuing without staging")
+            _emit("tnm_specialist", f"TNM specialist skipped: {tnm_err}", 58)
 
         # ── Agent 3: Oncologist (initial draft) ──────────────────────────────
         _emit("oncologist", "Llama 3.3 70B: synthesising initial management plan...", 60)
