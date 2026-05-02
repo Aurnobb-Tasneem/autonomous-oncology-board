@@ -1,6 +1,7 @@
 // lib/api.ts — Typed API client for AOB backend
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Proxy all requests through Next.js to avoid Mixed Content (HTTPS -> HTTP) and CORS issues.
+const BASE = "/api/proxy";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
