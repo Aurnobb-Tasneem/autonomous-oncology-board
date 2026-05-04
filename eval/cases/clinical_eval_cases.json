@@ -1,0 +1,2301 @@
+[
+  {
+    "case_id": "AOB-001",
+    "pathology_text": "Lung adenocarcinoma, acinar-predominant, 3.2 cm, left lower lobe. 2 of 15 mediastinal lymph nodes positive. No distant metastases on PET-CT.",
+    "metadata": {
+      "age": 62,
+      "sex": "M",
+      "smoking_history": "30 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2a",
+        "N": "N2",
+        "M": "M0",
+        "stage": "IIIA"
+      },
+      "biomarkers": [
+        "EGFR panel",
+        "ALK IHC",
+        "ROS1 FISH",
+        "PD-L1 IHC",
+        "KRAS G12C"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-002",
+    "pathology_text": "EGFR exon 19 deletion-positive lung adenocarcinoma, Stage IV (T2 N3 M1b), liver metastases × 2. PD-L1 TPS 30%. ALK/ROS1 negative.",
+    "metadata": {
+      "age": 55,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR exon 19 deletion",
+        "ALK negative",
+        "ROS1 negative",
+        "PD-L1 TPS 30%"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-003",
+    "pathology_text": "ALK-rearranged lung adenocarcinoma, Stage IV (T3 N2 M1a), malignant pleural effusion. No brain metastases. Treatment-naive.",
+    "metadata": {
+      "age": 48,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1a",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "ALK rearrangement confirmed",
+        "EGFR negative",
+        "PD-L1 TPS 5%"
+      ],
+      "first_line_tx_class": "tki_alk",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-004",
+    "pathology_text": "Lung adenocarcinoma, PD-L1 TPS 80%, no EGFR/ALK/ROS1 mutations. Stage IV (T2 N3 M1b). KRAS G12C wild-type. No prior therapy.",
+    "metadata": {
+      "age": 70,
+      "sex": "M",
+      "smoking_history": "20 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 80%",
+        "EGFR wild-type",
+        "ALK negative",
+        "KRAS wild-type"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-005",
+    "pathology_text": "KRAS G12C-mutant lung adenocarcinoma, Stage IV. Post-platinum + pembrolizumab (2 prior lines). ECOG PS 1.",
+    "metadata": {
+      "age": 67,
+      "sex": "M",
+      "smoking_history": "40 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "KRAS G12C confirmed",
+        "PD-L1 TPS 10%"
+      ],
+      "first_line_tx_class": "kras_g12c_inhibitor",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-006",
+    "pathology_text": "MET exon 14 skipping-positive lung adenocarcinoma, Stage IV (T4 N2 M1b). No prior MET inhibitor. ECOG PS 1.",
+    "metadata": {
+      "age": 73,
+      "sex": "F",
+      "smoking_history": "10 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "MET exon 14 skipping confirmed",
+        "PD-L1 TPS 15%"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-007",
+    "pathology_text": "ROS1 fusion-positive lung adenocarcinoma (ROS1-CD74), Stage IV with 2 brain metastases. Treatment-naive.",
+    "metadata": {
+      "age": 42,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N2",
+        "M": "M1c",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "ROS1 fusion CD74",
+        "EGFR negative",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "tki_alk_ros1",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-008",
+    "pathology_text": "BRAF V600E-mutant lung adenocarcinoma, Stage IV (T2 N1 M1b). PD-L1 TPS 5%. No prior BRAF-targeted therapy.",
+    "metadata": {
+      "age": 58,
+      "sex": "M",
+      "smoking_history": "15 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N1",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "BRAF V600E confirmed",
+        "MEK co-mutation negative"
+      ],
+      "first_line_tx_class": "braf_inhibitor",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-009",
+    "pathology_text": "HER2-amplified lung adenocarcinoma (IHC 3+), Stage IV. Post-platinum + pemetrexed (1 prior line). ECOG PS 1.",
+    "metadata": {
+      "age": 65,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "HER2 IHC 3+",
+        "HER2 FISH amplified",
+        "EGFR negative"
+      ],
+      "first_line_tx_class": "anti_her2_biologic",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-010",
+    "pathology_text": "NTRK3 fusion-positive lung adenocarcinoma, Stage IV. Treatment-naive. Age 38.",
+    "metadata": {
+      "age": 38,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N1",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "NTRK3 fusion confirmed",
+        "EGFR wild-type",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "trk_inhibitor",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-011",
+    "pathology_text": "Lung adenocarcinoma, Stage IB (T2a N0 M0), peripheral, acinar pattern. EGFR exon 19 deletion. Complete resection.",
+    "metadata": {
+      "age": 61,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2a",
+        "N": "N0",
+        "M": "M0",
+        "stage": "IB"
+      },
+      "biomarkers": [
+        "EGFR exon 19 deletion"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-012",
+    "pathology_text": "Lung adenocarcinoma, micropapillary predominant, Stage IIIB (T4 N2 M0), unresectable. PD-L1 TPS 40%.",
+    "metadata": {
+      "age": 68,
+      "sex": "M",
+      "smoking_history": "35 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N2",
+        "M": "M0",
+        "stage": "IIIB"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 40%",
+        "EGFR wild-type",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-013",
+    "pathology_text": "Lung adenocarcinoma, EGFR T790M on rebiopsy after gefitinib failure, Stage IV.",
+    "metadata": {
+      "age": 63,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR T790M confirmed",
+        "prior gefitinib failure"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-014",
+    "pathology_text": "Lung adenocarcinoma EGFR exon 20 insertion (S768_D770dup), Stage IV. Treatment-naive.",
+    "metadata": {
+      "age": 57,
+      "sex": "M",
+      "smoking_history": "10 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR exon 20 insertion S768_D770dup"
+      ],
+      "first_line_tx_class": "bispecific_egfr_met",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-015",
+    "pathology_text": "Lung adenocarcinoma, STK11+KRAS G12C co-mutation, Stage IV. PD-L1 TPS 5%. Treatment-naive.",
+    "metadata": {
+      "age": 69,
+      "sex": "M",
+      "smoking_history": "50 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "KRAS G12C",
+        "STK11 mutation",
+        "PD-L1 TPS 5%"
+      ],
+      "first_line_tx_class": "platinum_chemo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-016",
+    "pathology_text": "Lung adenocarcinoma, high TMB (22 mut/Mb), PD-L1 TPS 15%. No EGFR/ALK/ROS1/KRAS. Stage IV.",
+    "metadata": {
+      "age": 59,
+      "sex": "F",
+      "smoking_history": "25 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "TMB-high 22 mut/Mb",
+        "PD-L1 TPS 15%",
+        "EGFR wild-type"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-017",
+    "pathology_text": "Stage IA1 lung adenocarcinoma, lepidic-predominant, 0.9 cm, pT1a N0. Resected R0.",
+    "metadata": {
+      "age": 52,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T1a",
+        "N": "N0",
+        "M": "M0",
+        "stage": "IA1"
+      },
+      "biomarkers": [
+        "EGFR panel (optional)",
+        "ALK IHC"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-018",
+    "pathology_text": "Lung adenocarcinoma with liver + bone metastases, EGFR L858R. Stage IVB (M1c). PD-L1 TPS 20%.",
+    "metadata": {
+      "age": 71,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1c",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "EGFR L858R confirmed",
+        "PD-L1 TPS 20%"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-019",
+    "pathology_text": "Lung adenocarcinoma EGFR wild-type, ALK/ROS1 negative, PD-L1 TPS 1-49%. Stage IV. Treatment-naive. ECOG PS 2.",
+    "metadata": {
+      "age": 66,
+      "sex": "M",
+      "smoking_history": "30 pack-years",
+      "ecog_ps": 2
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR wild-type",
+        "PD-L1 TPS 30%",
+        "KRAS G12C negative"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-020",
+    "pathology_text": "Lung adenocarcinoma, RET fusion (RET-KIF5B), Stage IV. Treatment-naive.",
+    "metadata": {
+      "age": 44,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "RET fusion KIF5B confirmed",
+        "EGFR wild-type",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-021",
+    "pathology_text": "Lung adenocarcinoma, Stage IIA (T2b N0 M0). Lobectomy. EGFR L858R. No adjuvant chemotherapy yet.",
+    "metadata": {
+      "age": 58,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2b",
+        "N": "N0",
+        "M": "M0",
+        "stage": "IIA"
+      },
+      "biomarkers": [
+        "EGFR L858R"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-022",
+    "pathology_text": "Lung adenocarcinoma with malignant pericardial effusion, Stage IVA. EGFR negative. PD-L1 TPS 55%.",
+    "metadata": {
+      "age": 74,
+      "sex": "M",
+      "smoking_history": "45 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N3",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 55%",
+        "EGFR negative",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-023",
+    "pathology_text": "Lung adenocarcinoma Stage IV, EGFR exon 19 deletion, 3 brain metastases. Post-osimertinib (18 months). MET amplification on rebiopsy.",
+    "metadata": {
+      "age": 53,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1c",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR exon 19 deletion",
+        "MET amplification",
+        "osimertinib failure"
+      ],
+      "first_line_tx_class": "platinum_chemo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-024",
+    "pathology_text": "Lung adenocarcinoma POLE exon 9 mutation, ultra-high TMB (>100 mut/Mb), MSS. Stage IV.",
+    "metadata": {
+      "age": 61,
+      "sex": "M",
+      "smoking_history": "20 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "POLE exon 9 mutation",
+        "TMB >100 mut/Mb",
+        "MSS"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-025",
+    "pathology_text": "Lung adenocarcinoma Stage IIIA (T2 N2 M0). EGFR L858R. Concurrent CRT completed. PD-L1 TPS 30%.",
+    "metadata": {
+      "age": 64,
+      "sex": "F",
+      "smoking_history": "5 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N2",
+        "M": "M0",
+        "stage": "IIIA"
+      },
+      "biomarkers": [
+        "EGFR L858R",
+        "PD-L1 TPS 30%"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-026",
+    "pathology_text": "NRG1 fusion-positive lung adenocarcinoma (NRG1-CD74). Stage IV. Treatment-naive.",
+    "metadata": {
+      "age": 60,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "NRG1 fusion CD74",
+        "EGFR negative",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-027",
+    "pathology_text": "Lung adenocarcinoma, KEAP1+NFE2L2 co-mutation, no driver. Stage IV. ECOG PS 1.",
+    "metadata": {
+      "age": 65,
+      "sex": "M",
+      "smoking_history": "40 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "KEAP1 mutation",
+        "NFE2L2 mutation",
+        "PD-L1 TPS 20%"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-028",
+    "pathology_text": "Lung adenocarcinoma, ALK rearrangement, Stage IV, post-alectinib 14 months. Crizotinib-naive. G1202R resistance mutation.",
+    "metadata": {
+      "age": 50,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1c",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "ALK G1202R resistance mutation",
+        "alectinib failure"
+      ],
+      "first_line_tx_class": "tki_alk",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-029",
+    "pathology_text": "Lung adenocarcinoma, FGFR1 amplification, Stage IV. Post-platinum/IO failure.",
+    "metadata": {
+      "age": 67,
+      "sex": "M",
+      "smoking_history": "30 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "FGFR1 amplification",
+        "EGFR negative",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-030",
+    "pathology_text": "Lung adenocarcinoma Stage II (T2b N1 M0). Resected. EGFR wild-type. PD-L1 TPS 60%. Post-resection adjuvant chemo completed.",
+    "metadata": {
+      "age": 57,
+      "sex": "M",
+      "smoking_history": "25 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2b",
+        "N": "N1",
+        "M": "M0",
+        "stage": "II"
+      },
+      "biomarkers": [
+        "EGFR wild-type",
+        "PD-L1 TPS 60%"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-031",
+    "pathology_text": "Lung adenocarcinoma in situ (AIS), 0.6 cm, pure lepidic, no invasion.",
+    "metadata": {
+      "age": 55,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "Tis",
+        "N": "N0",
+        "M": "M0",
+        "stage": "0"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-032",
+    "pathology_text": "Lung adenocarcinoma Stage IIIB, T4 N2 M0. Invading carina. EGFR L858R. Unresectable.",
+    "metadata": {
+      "age": 69,
+      "sex": "M",
+      "smoking_history": "40 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N2",
+        "M": "M0",
+        "stage": "IIIB"
+      },
+      "biomarkers": [
+        "EGFR L858R"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-033",
+    "pathology_text": "Lung adenocarcinoma, Stage IV, second-line (post-platinum/pemetrexed). PD-L1 TPS 0%. EGFR wild-type. ECOG PS 2.",
+    "metadata": {
+      "age": 73,
+      "sex": "F",
+      "smoking_history": "15 pack-years",
+      "ecog_ps": 2
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR wild-type",
+        "PD-L1 TPS 0%"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-034",
+    "pathology_text": "Lung adenocarcinoma Stage IV. EGFR exon 19 deletion. Brain metastases × 5. Treatment-naive.",
+    "metadata": {
+      "age": 46,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1c",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR exon 19 deletion",
+        "brain metastases × 5"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-035",
+    "pathology_text": "Lung adenocarcinoma with atrial invasion (T4), N3 disease, M0. Stage IIIC. Unresectable.",
+    "metadata": {
+      "age": 70,
+      "sex": "M",
+      "smoking_history": "50 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N3",
+        "M": "M0",
+        "stage": "IIIC"
+      },
+      "biomarkers": [
+        "EGFR wild-type",
+        "PD-L1 TPS 25%",
+        "ALK negative"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-036",
+    "pathology_text": "Lung adenocarcinoma Stage IV. Osimertinib progression. EGFR C797S + T790M co-mutation on liquid biopsy.",
+    "metadata": {
+      "age": 61,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR C797S",
+        "EGFR T790M",
+        "osimertinib failure"
+      ],
+      "first_line_tx_class": "platinum_chemo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-037",
+    "pathology_text": "Lung adenocarcinoma, pT2a N1 M0 (Stage IIA). R0 resection. ALK rearrangement confirmed.",
+    "metadata": {
+      "age": 53,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2a",
+        "N": "N1",
+        "M": "M0",
+        "stage": "IIA"
+      },
+      "biomarkers": [
+        "ALK rearrangement"
+      ],
+      "first_line_tx_class": "tki_alk",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-038",
+    "pathology_text": "Lung adenocarcinoma Stage IV, PD-L1 TPS 0%, EGFR/ALK/ROS1 negative, KRAS WT. Treatment-naive.",
+    "metadata": {
+      "age": 68,
+      "sex": "M",
+      "smoking_history": "25 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 0%",
+        "EGFR negative",
+        "KRAS wild-type"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-039",
+    "pathology_text": "Lung adenocarcinoma Stage IV. FGFR2 fusion. Post-platinum chemotherapy. ECOG PS 1.",
+    "metadata": {
+      "age": 59,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "FGFR2 fusion",
+        "EGFR negative"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-040",
+    "pathology_text": "Lung adenocarcinoma with KRASG12D, MSS, no IO benefit. Stage IV. Post 2 platinum lines.",
+    "metadata": {
+      "age": 67,
+      "sex": "M",
+      "smoking_history": "35 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "KRAS G12D",
+        "MSS",
+        "PD-L1 TPS 5%"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-041",
+    "pathology_text": "Lung squamous cell carcinoma, Stage IV (T3 N3 M1b). PD-L1 TPS 60%. Treatment-naive.",
+    "metadata": {
+      "age": 71,
+      "sex": "M",
+      "smoking_history": "50 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 60%",
+        "TMB 8 mut/Mb"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-042",
+    "pathology_text": "Lung squamous carcinoma, Stage III A (T2b N2 M0). Unresectable. PD-L1 TPS 20%. Post-concurrent CRT.",
+    "metadata": {
+      "age": 65,
+      "sex": "M",
+      "smoking_history": "40 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2b",
+        "N": "N2",
+        "M": "M0",
+        "stage": "IIIA"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 20%"
+      ],
+      "first_line_tx_class": "anti_pdl1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-043",
+    "pathology_text": "Squamous cell lung carcinoma Stage IV. Post-platinum failure. PD-L1 TPS 10%. ECOG PS 1.",
+    "metadata": {
+      "age": 69,
+      "sex": "M",
+      "smoking_history": "45 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 10%",
+        "TMB 6 mut/Mb"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-044",
+    "pathology_text": "Squamous lung carcinoma, Stage IIB post-resection. Adjuvant cisplatin + vinorelbine completed.",
+    "metadata": {
+      "age": 62,
+      "sex": "M",
+      "smoking_history": "35 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N0",
+        "M": "M0",
+        "stage": "IIB"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 5%"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-045",
+    "pathology_text": "Squamous lung carcinoma, Stage IV. PD-L1 TPS 0%. High TMB (20 mut/Mb). Treatment-naive.",
+    "metadata": {
+      "age": 75,
+      "sex": "M",
+      "smoking_history": "60 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 0%",
+        "TMB 20 mut/Mb"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-046",
+    "pathology_text": "Lung squamous carcinoma, Stage 0 (carcinoma in situ), superficial bronchial.",
+    "metadata": {
+      "age": 58,
+      "sex": "M",
+      "smoking_history": "30 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "Tis",
+        "N": "N0",
+        "M": "M0",
+        "stage": "0"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-047",
+    "pathology_text": "Lung squamous carcinoma Stage IV. ECOG PS 3. PD-L1 TPS 55%. Multiple comorbidities.",
+    "metadata": {
+      "age": 78,
+      "sex": "M",
+      "smoking_history": "60 pack-years",
+      "ecog_ps": 3
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N3",
+        "M": "M1c",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 55%"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-048",
+    "pathology_text": "Squamous lung carcinoma, DDR2 L239R mutation confirmed. Stage IV. Post-platinum.",
+    "metadata": {
+      "age": 63,
+      "sex": "M",
+      "smoking_history": "40 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "DDR2 L239R mutation",
+        "PD-L1 TPS 8%"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-049",
+    "pathology_text": "Squamous lung carcinoma, FGFR1 amplification. Stage IV. Post-platinum+IO.",
+    "metadata": {
+      "age": 70,
+      "sex": "M",
+      "smoking_history": "45 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "FGFR1 amplification",
+        "PD-L1 TPS 15%"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-050",
+    "pathology_text": "Lung squamous carcinoma, PIK3CA E545K. Stage IV third-line.",
+    "metadata": {
+      "age": 68,
+      "sex": "M",
+      "smoking_history": "40 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PIK3CA E545K",
+        "PD-L1 TPS 5%"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-051",
+    "pathology_text": "Squamous lung carcinoma Stage IVA. Pericardial invasion. PD-L1 1-49%. Treatment-naive.",
+    "metadata": {
+      "age": 66,
+      "sex": "M",
+      "smoking_history": "35 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N3",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 30%"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-052",
+    "pathology_text": "Squamous lung carcinoma Stage IIIB. Recurrent after surgery + adjuvant chemo. PD-L1 TPS 5%.",
+    "metadata": {
+      "age": 67,
+      "sex": "M",
+      "smoking_history": "45 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4",
+        "N": "N2",
+        "M": "M0",
+        "stage": "IIIB"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 5%",
+        "TMB 7 mut/Mb"
+      ],
+      "first_line_tx_class": "chemo_io_combo",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-053",
+    "pathology_text": "Squamous lung carcinoma Stage IB. Complete resection. Lymph nodes negative. PD-L1 TPS 0%.",
+    "metadata": {
+      "age": 55,
+      "sex": "M",
+      "smoking_history": "20 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2a",
+        "N": "N0",
+        "M": "M0",
+        "stage": "IB"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 0%"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-054",
+    "pathology_text": "Squamous cell lung carcinoma. Stage IV, haemoptysis. Active. PD-L1 TPS 80%. No prior IO.",
+    "metadata": {
+      "age": 72,
+      "sex": "M",
+      "smoking_history": "55 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 80%"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-055",
+    "pathology_text": "Squamous lung carcinoma Stage IV. Third-line after platinum + docetaxel + nivolumab.",
+    "metadata": {
+      "age": 69,
+      "sex": "M",
+      "smoking_history": "50 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 10%"
+      ],
+      "first_line_tx_class": "multikinase_inhibitor",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-056",
+    "pathology_text": "Colon adenocarcinoma, pT3 N2a M0 (Stage IIIB). KRAS wild-type. BRAF wild-type. MSS. Left-sided primary.",
+    "metadata": {
+      "age": 58,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2a",
+        "M": "M0",
+        "stage": "IIIB"
+      },
+      "biomarkers": [
+        "KRAS wild-type",
+        "BRAF wild-type",
+        "MSS"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-057",
+    "pathology_text": "MSI-H colon adenocarcinoma, pT3 N1a M1a (liver only). Lynch syndrome suspected.",
+    "metadata": {
+      "age": 45,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N1a",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "MSI-H",
+        "dMMR",
+        "Lynch syndrome germline testing required"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-058",
+    "pathology_text": "BRAF V600E-mutant colon adenocarcinoma, pT4a N2b M1b. MSS. Liver + lung metastases.",
+    "metadata": {
+      "age": 62,
+      "sex": "F",
+      "smoking_history": "10 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4a",
+        "N": "N2b",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "BRAF V600E",
+        "MSS",
+        "KRAS wild-type"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-059",
+    "pathology_text": "Colon adenocarcinoma, HER2-amplified (IHC 3+). KRAS/NRAS/BRAF wild-type. MSS. Stage IV, second-line.",
+    "metadata": {
+      "age": 55,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2a",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "HER2 IHC 3+",
+        "KRAS wild-type",
+        "MSS"
+      ],
+      "first_line_tx_class": "anti_her2_biologic",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-060",
+    "pathology_text": "Colon adenocarcinoma, MSI-H, BRAF V600E co-mutation. Stage IV. Treatment-naive. Pembrolizumab candidate.",
+    "metadata": {
+      "age": 67,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N1a",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "MSI-H",
+        "BRAF V600E",
+        "dMMR"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-061",
+    "pathology_text": "Colon adenocarcinoma, pT2 N0 M0 (Stage I). Complete resection. MMR proficient.",
+    "metadata": {
+      "age": 50,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N0",
+        "M": "M0",
+        "stage": "I"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-062",
+    "pathology_text": "Colon adenocarcinoma, NTRK2 fusion. Stage IV. Post-FOLFOX 6 cycles.",
+    "metadata": {
+      "age": 49,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N1b",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "NTRK2 fusion",
+        "MSS",
+        "KRAS wild-type"
+      ],
+      "first_line_tx_class": "trk_inhibitor",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-063",
+    "pathology_text": "Colon adenocarcinoma KRAS G12C mutant. Stage IV. First metastatic line.",
+    "metadata": {
+      "age": 60,
+      "sex": "M",
+      "smoking_history": "15 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4a",
+        "N": "N2a",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "KRAS G12C",
+        "MSS",
+        "BRAF wild-type"
+      ],
+      "first_line_tx_class": "anti_vegf_biologic",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-064",
+    "pathology_text": "Colon adenocarcinoma, pT3 N0 M0 (Stage II). MSS. Low risk. No high-risk features.",
+    "metadata": {
+      "age": 72,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N0",
+        "M": "M0",
+        "stage": "II"
+      },
+      "biomarkers": [
+        "MSS",
+        "KRAS wild-type"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-065",
+    "pathology_text": "Lynch syndrome colon adenocarcinoma (MLH1 germline). pT4b N0 M0 (Stage IIB). MSI-H.",
+    "metadata": {
+      "age": 38,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4b",
+        "N": "N0",
+        "M": "M0",
+        "stage": "IIB"
+      },
+      "biomarkers": [
+        "MLH1 germline mutation",
+        "MSI-H",
+        "Lynch syndrome confirmed"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-066",
+    "pathology_text": "Colon adenocarcinoma, POLE exon 9 mutation, ultra-high TMB. MSS. Stage IV.",
+    "metadata": {
+      "age": 57,
+      "sex": "M",
+      "smoking_history": "5 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2b",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "POLE exon 9 mutation",
+        "TMB >100 mut/Mb",
+        "MSS"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-067",
+    "pathology_text": "Colon adenocarcinoma right-sided primary. KRAS/NRAS/BRAF wild-type. MSS. Stage IV. Treatment-naive.",
+    "metadata": {
+      "age": 65,
+      "sex": "M",
+      "smoking_history": "20 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2a",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "KRAS wild-type",
+        "BRAF wild-type",
+        "MSS",
+        "right-sided"
+      ],
+      "first_line_tx_class": "anti_vegf_biologic",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-068",
+    "pathology_text": "Colon adenocarcinoma Stage IV, BRAF V600E, MSS. Second-line (post-FOLFOX).",
+    "metadata": {
+      "age": 59,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2b",
+        "M": "M1c",
+        "stage": "IVC"
+      },
+      "biomarkers": [
+        "BRAF V600E",
+        "MSS"
+      ],
+      "first_line_tx_class": "braf_inhibitor",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-069",
+    "pathology_text": "Colon adenocarcinoma pT4b N2b M0 (Stage IIIC). High risk. Mucinous subtype. KRAS G12D.",
+    "metadata": {
+      "age": 55,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4b",
+        "N": "N2b",
+        "M": "M0",
+        "stage": "IIIC"
+      },
+      "biomarkers": [
+        "KRAS G12D",
+        "MSS"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-070",
+    "pathology_text": "Rectal adenocarcinoma, cT3 N1 M0 (Stage IIIB). MSS. KRAS G13D. Pre-treatment.",
+    "metadata": {
+      "age": 51,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N1",
+        "M": "M0",
+        "stage": "IIIB"
+      },
+      "biomarkers": [
+        "KRAS G13D",
+        "MSS"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-071",
+    "pathology_text": "Colon adenocarcinoma, Stage IV (liver + peritoneum). KRAS G12V. DPYD *2A heterozygous.",
+    "metadata": {
+      "age": 63,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4a",
+        "N": "N2b",
+        "M": "M1c",
+        "stage": "IVC"
+      },
+      "biomarkers": [
+        "KRAS G12V",
+        "DPYD *2A variant",
+        "MSS"
+      ],
+      "first_line_tx_class": "platinum_doublet_capecitabine",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-072",
+    "pathology_text": "Colon adenocarcinoma Stage IV. MSI-H. Treatment-naive. Fit patient. Pembrolizumab vs FOLFOX decision.",
+    "metadata": {
+      "age": 60,
+      "sex": "M",
+      "smoking_history": "10 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2a",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "MSI-H",
+        "dMMR"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-073",
+    "pathology_text": "Colon adenocarcinoma, Stage IV. KRAS/NRAS/BRAF WT. MSS. Left-sided. Second-line post-FOLFOX+bevacizumab.",
+    "metadata": {
+      "age": 64,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2b",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "KRAS wild-type",
+        "BRAF wild-type",
+        "MSS",
+        "left-sided"
+      ],
+      "first_line_tx_class": "anti_egfr_biologic",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-074",
+    "pathology_text": "Colon adenocarcinoma, RAS/BRAF wild-type. MSS. Lung-only oligo-metastatic (2 lesions). Resectable intent.",
+    "metadata": {
+      "age": 57,
+      "sex": "M",
+      "smoking_history": "5 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N1a",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "KRAS wild-type",
+        "BRAF wild-type",
+        "MSS"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-075",
+    "pathology_text": "Colon adenocarcinoma, Stage IV. 5th line. Post-FOLFOX, FOLFIRI, bevacizumab, regorafenib, TAS-102.",
+    "metadata": {
+      "age": 66,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4b",
+        "N": "N2b",
+        "M": "M1c",
+        "stage": "IVC"
+      },
+      "biomarkers": [
+        "KRAS G12A",
+        "MSS"
+      ],
+      "first_line_tx_class": "multikinase_inhibitor",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-076",
+    "pathology_text": "Colon adenocarcinoma pT3 N0 M0 (Stage IIA). High-risk: T4 invasion absent. KRAS mutant. MSS.",
+    "metadata": {
+      "age": 72,
+      "sex": "M",
+      "smoking_history": "30 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N0",
+        "M": "M0",
+        "stage": "IIA"
+      },
+      "biomarkers": [
+        "KRAS mutant",
+        "MSS"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-077",
+    "pathology_text": "Colon adenocarcinoma pT2 N1b M0 (Stage IIIA). KRAS WT. MSS. Left-sided. Post-resection.",
+    "metadata": {
+      "age": 48,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N1b",
+        "M": "M0",
+        "stage": "IIIA"
+      },
+      "biomarkers": [
+        "KRAS wild-type",
+        "MSS"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-078",
+    "pathology_text": "Colon adenocarcinoma. MSI-H dMMR Lynch syndrome (MSH2 germline). Stage IV liver-only. Pembrolizumab initiated.",
+    "metadata": {
+      "age": 42,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2a",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "MSI-H",
+        "MSH2 germline",
+        "Lynch syndrome"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-079",
+    "pathology_text": "Rectal adenocarcinoma, pCR after total neoadjuvant therapy. ypT0 N0. MSS.",
+    "metadata": {
+      "age": 52,
+      "sex": "M",
+      "smoking_history": "10 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T0",
+        "N": "N0",
+        "M": "M0",
+        "stage": "0"
+      },
+      "biomarkers": [
+        "MSS",
+        "KRAS G12D"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-080",
+    "pathology_text": "Colon adenocarcinoma, HER2 IHC 3+. KRAS/NRAS/BRAF WT. MSS. Stage IV. Post-FOLFIRI+bevacizumab.",
+    "metadata": {
+      "age": 61,
+      "sex": "M",
+      "smoking_history": "5 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4a",
+        "N": "N2a",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "HER2 IHC 3+",
+        "HER2 FISH+",
+        "KRAS wild-type"
+      ],
+      "first_line_tx_class": "anti_her2_biologic",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-081",
+    "pathology_text": "Colon adenocarcinoma, Stage IV. KRAS G12C. Post-first-line FOLFOX.",
+    "metadata": {
+      "age": 58,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2b",
+        "M": "M1c",
+        "stage": "IVC"
+      },
+      "biomarkers": [
+        "KRAS G12C",
+        "MSS"
+      ],
+      "first_line_tx_class": "kras_g12c_inhibitor",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-082",
+    "pathology_text": "Colon adenocarcinoma. pT3 N2a M0 (Stage IIIB). DPYD*2A wild-type. MSS. Left. CAPOX adjuvant initiated.",
+    "metadata": {
+      "age": 60,
+      "sex": "M",
+      "smoking_history": "15 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N2a",
+        "M": "M0",
+        "stage": "IIIB"
+      },
+      "biomarkers": [
+        "MSS",
+        "KRAS G12A"
+      ],
+      "first_line_tx_class": "platinum_doublet_capecitabine",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-083",
+    "pathology_text": "Colon adenocarcinoma. Stage IV. MSS KRAS WT BRAF WT. Third-line post-FOLFOX, FOLFIRI+cetuximab.",
+    "metadata": {
+      "age": 67,
+      "sex": "M",
+      "smoking_history": "20 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IVB"
+      },
+      "biomarkers": [
+        "KRAS wild-type",
+        "BRAF wild-type",
+        "MSS"
+      ],
+      "first_line_tx_class": "multikinase_inhibitor",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-084",
+    "pathology_text": "Colon adenocarcinoma. Stage IV. RAS/BRAF WT. MSS. ctDNA positive post-resection. Adjuvant decision.",
+    "metadata": {
+      "age": 56,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N1b",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "ctDNA positive",
+        "RAS wild-type",
+        "BRAF wild-type",
+        "MSS"
+      ],
+      "first_line_tx_class": "platinum_doublet_5fu",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-085",
+    "pathology_text": "Rectal adenocarcinoma. cT4b N2 M0 (Stage IIIC). MSI-H. Neoadjuvant IO before surgery?",
+    "metadata": {
+      "age": 63,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4b",
+        "N": "N2",
+        "M": "M0",
+        "stage": "IIIC"
+      },
+      "biomarkers": [
+        "MSI-H",
+        "dMMR"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-086",
+    "pathology_text": "Hyperplastic polyp of the colon, 3 mm, no dysplasia, no atypia.",
+    "metadata": {
+      "age": 55,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-087",
+    "pathology_text": "Tubular adenoma, low-grade dysplasia, 8 mm, completely excised.",
+    "metadata": {
+      "age": 62,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-088",
+    "pathology_text": "Lung biopsy: organising pneumonia. No malignancy identified. Inflammatory infiltrate.",
+    "metadata": {
+      "age": 48,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-089",
+    "pathology_text": "Hamartoma of the lung, 1.4 cm, chondromyxoid stroma, fat tissue, bronchial elements. Completely resected.",
+    "metadata": {
+      "age": 58,
+      "sex": "M",
+      "smoking_history": "20 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-090",
+    "pathology_text": "Tubulovillous adenoma with focal high-grade dysplasia. No submucosal invasion. Excised.",
+    "metadata": {
+      "age": 67,
+      "sex": "M",
+      "smoking_history": "15 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign/HGD"
+      },
+      "biomarkers": [
+        "MMR IHC if Lynch syndrome suspicion"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-091",
+    "pathology_text": "Atypical adenomatous hyperplasia (AAH) of the lung, 3 mm GGO. No invasion.",
+    "metadata": {
+      "age": 54,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign/preinvasive"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-092",
+    "pathology_text": "Carcinoid tumorlet of the lung, 0.2 cm, Ki-67 <2%, no angioinvasion.",
+    "metadata": {
+      "age": 61,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [
+        "Ki-67 <2%"
+      ],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-093",
+    "pathology_text": "Sessile serrated adenoma of the colon, 5 mm, no dysplasia.",
+    "metadata": {
+      "age": 57,
+      "sex": "M",
+      "smoking_history": "10 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-094",
+    "pathology_text": "Benign reactive lymphoid hyperplasia, mediastinal biopsy. No malignant cells.",
+    "metadata": {
+      "age": 45,
+      "sex": "M",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-095",
+    "pathology_text": "Fibrous pleural plaque. No asbestos bodies. No malignancy.",
+    "metadata": {
+      "age": 70,
+      "sex": "M",
+      "smoking_history": "30 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "N/A",
+        "N": "N/A",
+        "M": "N/A",
+        "stage": "benign"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-096",
+    "pathology_text": "Lung adenocarcinoma, Stage IV, EGFR L858R, T790M detected after osimertinib failure. Rebiopsy: SCLC transformation confirmed.",
+    "metadata": {
+      "age": 59,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1c",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "EGFR L858R",
+        "SCLC transformation",
+        "T790M"
+      ],
+      "first_line_tx_class": "platinum_chemo",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-097",
+    "pathology_text": "Colon adenocarcinoma, pT1 N0 M0 (Stage I), polyp-based, completely excised with clear margins.",
+    "metadata": {
+      "age": 55,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T1",
+        "N": "N0",
+        "M": "M0",
+        "stage": "I"
+      },
+      "biomarkers": [],
+      "first_line_tx_class": "surveillance",
+      "nccn_category": "1"
+    }
+  },
+  {
+    "case_id": "AOB-098",
+    "pathology_text": "Lung squamous carcinoma, Stage IV, second-line, docetaxel + ramucirumab after pembrolizumab.",
+    "metadata": {
+      "age": 66,
+      "sex": "M",
+      "smoking_history": "40 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T3",
+        "N": "N3",
+        "M": "M1b",
+        "stage": "IV"
+      },
+      "biomarkers": [
+        "PD-L1 TPS 10%"
+      ],
+      "first_line_tx_class": "other_therapy",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-099",
+    "pathology_text": "Colon adenocarcinoma Stage IV. MSI-H. Post-pembrolizumab progression (rare). Second IO attempted.",
+    "metadata": {
+      "age": 58,
+      "sex": "M",
+      "smoking_history": "10 pack-years"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T4a",
+        "N": "N2b",
+        "M": "M1c",
+        "stage": "IVC"
+      },
+      "biomarkers": [
+        "MSI-H",
+        "pembrolizumab failure",
+        "dMMR"
+      ],
+      "first_line_tx_class": "anti_pd1_io",
+      "nccn_category": "2A"
+    }
+  },
+  {
+    "case_id": "AOB-100",
+    "pathology_text": "Lung adenocarcinoma Stage IV. EGFR exon 19 deletion. ECOG PS 0. Liver-only. Oligo-metastatic. Treatment-naive.",
+    "metadata": {
+      "age": 50,
+      "sex": "F",
+      "smoking_history": "never"
+    },
+    "ground_truth": {
+      "tnm": {
+        "T": "T2",
+        "N": "N2",
+        "M": "M1a",
+        "stage": "IVA"
+      },
+      "biomarkers": [
+        "EGFR exon 19 deletion"
+      ],
+      "first_line_tx_class": "tki_egfr_3g",
+      "nccn_category": "1"
+    }
+  }
+]

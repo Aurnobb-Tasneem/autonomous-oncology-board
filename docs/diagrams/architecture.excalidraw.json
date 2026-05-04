@@ -1,0 +1,135 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "AOB Architecture Diagram — AMD Developer Hackathon 2026",
+  "elements": [
+    {
+      "id": "title",
+      "type": "text",
+      "x": 250, "y": 20,
+      "width": 600, "height": 40,
+      "text": "Autonomous Oncology Board (AOB) — System Architecture",
+      "fontSize": 24, "fontFamily": 1, "textAlign": "center",
+      "strokeColor": "#1e1e1e", "fillStyle": "solid",
+      "roughness": 0, "opacity": 100
+    },
+    {
+      "id": "input_box",
+      "type": "rectangle",
+      "x": 300, "y": 80, "width": 500, "height": 60,
+      "strokeColor": "#1971c2", "backgroundColor": "#e7f5ff",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": { "text": "Patient Case Input\n(WSI patches + clinical metadata)" }
+    },
+    {
+      "id": "arrow_input_path",
+      "type": "arrow",
+      "x": 550, "y": 140, "points": [[0,0],[0,40]],
+      "strokeColor": "#1e1e1e", "strokeWidth": 2
+    },
+    {
+      "id": "agent1_box",
+      "type": "rectangle",
+      "x": 270, "y": 180, "width": 560, "height": 120,
+      "strokeColor": "#e67700", "backgroundColor": "#fff3bf",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": {
+        "text": "AGENT 1: Digital Pathologist\nModel: Prov-GigaPath ViT-Giant 1.1B (FP16, ~3GB VRAM)\n• Attention Rollout + Grad-CAM++ + Integrated Gradients\n• Monte Carlo Dropout Uncertainty Quantification\nOutput: PathologyReport { classification, confidence ± σ, heatmaps }"
+      }
+    },
+    {
+      "id": "arrow_a1_a2",
+      "type": "arrow",
+      "x": 550, "y": 300, "points": [[0,0],[0,40]],
+      "strokeColor": "#1e1e1e", "strokeWidth": 2
+    },
+    {
+      "id": "agent2_box",
+      "type": "rectangle",
+      "x": 270, "y": 340, "width": 560, "height": 120,
+      "strokeColor": "#2f9e44", "backgroundColor": "#ebfbee",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": {
+        "text": "AGENT 2: Clinical Researcher\nModel: RAG (Qdrant in-process) + Llama 3.3 70B (FP8)\n• 500 NCCN/TCGA/PubMed documents pre-indexed\n• Biomarker protocol lookup + citation retrieval\nOutput: EvidenceBundle { protocols, citations, staging_guidance }"
+      }
+    },
+    {
+      "id": "specialists_box",
+      "type": "rectangle",
+      "x": 270, "y": 500, "width": 560, "height": 110,
+      "strokeColor": "#7048e8", "backgroundColor": "#f3f0ff",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": {
+        "text": "SPECIALIST LoRA SUITE (vLLM multi-adapter)\nBase: Llama 3.1 8B Instruct\n• tnm_specialist   • biomarker_specialist   • treatment_specialist\nAll 3 adapters hot-swapped on single base model"
+      }
+    },
+    {
+      "id": "arrow_a2_spec",
+      "type": "arrow",
+      "x": 550, "y": 460, "points": [[0,0],[0,40]],
+      "strokeColor": "#1e1e1e", "strokeWidth": 2
+    },
+    {
+      "id": "arrow_spec_a3",
+      "type": "arrow",
+      "x": 550, "y": 610, "points": [[0,0],[0,40]],
+      "strokeColor": "#1e1e1e", "strokeWidth": 2
+    },
+    {
+      "id": "agent3_box",
+      "type": "rectangle",
+      "x": 270, "y": 650, "width": 560, "height": 150,
+      "strokeColor": "#c92a2a", "backgroundColor": "#fff5f5",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": {
+        "text": "AGENT 3: Lead Oncologist — DEBATE LOOP (max 3 rounds)\nModel: Llama 3.3 70B (FP8, ~70GB VRAM via Ollama)\n\nRound 1: Draft management plan\nRound 2: Researcher CHALLENGES → flags biomarker gaps, guideline mismatches\nRound 3: Oncologist REVISES → revision diff tracked\nMeta-Evaluator: Consensus Score 0-100"
+      }
+    },
+    {
+      "id": "arrow_a3_post",
+      "type": "arrow",
+      "x": 550, "y": 800, "points": [[0,0],[0,40]],
+      "strokeColor": "#1e1e1e", "strokeWidth": 2
+    },
+    {
+      "id": "post_agents_box",
+      "type": "rectangle",
+      "x": 270, "y": 840, "width": 560, "height": 100,
+      "strokeColor": "#1098ad", "backgroundColor": "#e3fafc",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": {
+        "text": "POST-PROCESSING AGENTS\n• DifferentialDx (top-3 diagnoses + probabilities)\n• TrialMatcher (500 ClinicalTrials corpus)\n• PatientSummary (8th-grade English)\n• Counterfactual ('What if?' replanning)"
+      }
+    },
+    {
+      "id": "arrow_post_output",
+      "type": "arrow",
+      "x": 550, "y": 940, "points": [[0,0],[0,40]],
+      "strokeColor": "#1e1e1e", "strokeWidth": 2
+    },
+    {
+      "id": "output_box",
+      "type": "rectangle",
+      "x": 270, "y": 980, "width": 560, "height": 80,
+      "strokeColor": "#1971c2", "backgroundColor": "#e7f5ff",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": {
+        "text": "Patient Management Plan\n(TNM staging, NCCN treatment plan, citations, debate transcript,\nbiomarker panel, trial matches, patient summary, confidence ± σ)"
+      }
+    },
+    {
+      "id": "vram_box",
+      "type": "rectangle",
+      "x": 900, "y": 300, "width": 300, "height": 350,
+      "strokeColor": "#e67700", "backgroundColor": "#fff9db",
+      "fillStyle": "solid", "roughness": 0, "strokeWidth": 2, "cornerRadius": 6,
+      "label": {
+        "text": "AMD MI300X VRAM Budget\n192 GB HBM3 (unified)\n\nLlama 3.3 70B (FP8): 70 GB\nLlama 3.1 8B LoRAs: 16 GB\nGigaPath (FP16): 3 GB\nvLLM KV Cache: 30 GB\nQdrant: 1 GB\nOverhead: 8 GB\n─────────────────\nTotal: ~128 GB\nHeadroom: 64 GB ✓\n\nH100 = 80 GB → OOM ✗"
+      }
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff",
+    "gridSize": null
+  }
+}

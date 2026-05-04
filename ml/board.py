@@ -40,6 +40,12 @@ from ml.agents.board_memory import BoardMemory
 from ml.agents.digital_twin import simulate_pfs
 from ml.agents.vlm_pathologist import VLMPathologistAgent, VLMOpinion
 from ml.agents.staging_specialist import StagingSpecialistAgent, TNMResult
+from ml.agents.biomarker_specialist import BiomarkerSpecialistAgent, BiomarkerPanel
+from ml.agents.treatment_specialist import TreatmentSpecialistAgent, TreatmentProposal
+from ml.agents.differential import DifferentialDxAgent, DifferentialResult
+from ml.agents.patient_summary import PatientSummaryAgent
+from ml.agents.trial_matcher import TrialMatcherAgent, TrialMatchResult
+from ml.agents.counterfactual import CounterfactualAgent, CounterfactualPlan
 from ml.models.llm_client import OllamaClient
 from ml.rag.retriever import OncologyRetriever
 
@@ -77,11 +83,17 @@ class BoardResult:
     debate_rounds: list[DebateRound] = field(default_factory=list)
     debate_enabled: bool = False
     heatmaps_b64: list[str] = field(default_factory=list)
-    # Task 2: Qwen2-VL second opinion + reconciliation
     vlm_opinion: Optional[VLMOpinion] = None
     vlm_reconciliation: Optional[dict] = None
-    # Task 3: Cross-agent backward feedback (Oncologist → Pathologist)
     pathology_feedback: Optional[dict] = None
+    # Specialist suite outputs
+    biomarker_panel: Optional[BiomarkerPanel] = None
+    treatment_proposal: Optional[TreatmentProposal] = None
+    differential_dx: Optional[DifferentialResult] = None
+    # Post-plan outputs
+    patient_summary: Optional[str] = None
+    trial_matches: list = field(default_factory=list)
+    counterfactual: Optional[CounterfactualPlan] = None
 
     def to_dict(self) -> dict:
         d = {
@@ -114,6 +126,21 @@ class BoardResult:
             d["vlm_reconciliation"] = self.vlm_reconciliation
         if self.pathology_feedback is not None:
             d["pathology_feedback"] = self.pathology_feedback
+        if self.biomarker_panel is not None:
+            d["biomarker_panel"] = self.biomarker_panel.to_dict()
+        if self.treatment_proposal is not None:
+            d["treatment_proposal"] = self.treatment_proposal.to_dict()
+        if self.differential_dx is not None:
+            d["differential_dx"] = self.differential_dx.to_dict()
+        if self.patient_summary is not None:
+            d["patient_summary"] = self.patient_summary
+        if self.trial_matches:
+            d["trial_matches"] = [
+                (t.to_dict() if hasattr(t, "to_dict") else t)
+                for t in self.trial_matches
+            ]
+        if self.counterfactual is not None:
+            d["counterfactual"] = self.counterfactual.to_dict()
         return d
 
 
@@ -161,13 +188,19 @@ class AutonomousOncologyBoard:
         self.oncologist    = OncologistAgent(llm_client=self.llm)
         self.meta_evaluator = MetaEvaluator(llm_client=self.llm)
 
-        # Agent 1b: Qwen2-VL-7B visual second opinion (Track 3 / Qwen Challenge)
-        # Lazy-loaded on first describe() call — no VRAM consumed until then.
+        # Agent 1b: Qwen2-VL-7B visual second opinion
         self.vlm_pathologist = VLMPathologistAgent(hf_token=hf_token)
 
-        # Agent 2b: Llama-3.1-8B LoRA TNM Staging Specialist (Track 2)
-        # Calls vLLM at localhost:8006. Gracefully falls back if vLLM is not running.
-        self.staging_specialist = StagingSpecialistAgent()
+        # Specialist suite — Llama-3.1-8B LoRA adapters via vLLM :8006
+        self.staging_specialist   = StagingSpecialistAgent()
+        self.biomarker_specialist = BiomarkerSpecialistAgent()
+        self.treatment_specialist = TreatmentSpecialistAgent()
+
+        # Novel agents — Llama 3.3 70B via Ollama
+        self.differential_agent   = DifferentialDxAgent(llm_client=self.llm)
+        self.patient_summary_agent = PatientSummaryAgent(llm_client=self.llm)
+        self.trial_matcher        = TrialMatcherAgent()
+        self.counterfactual_agent = CounterfactualAgent(llm_client=self.llm)
 
         # Board memory — persists cases for similar-case retrieval
         self.memory = BoardMemory()
@@ -338,13 +371,74 @@ class AutonomousOncologyBoard:
             log.warning(f"Board: TNM specialist error ({tnm_err}) — continuing without staging")
             _emit("tnm_specialist", f"TNM specialist skipped: {tnm_err}", 58)
 
+        # ── Agent 2c: Biomarker Specialist ───────────────────────────────────
+        biomarker_panel: Optional[BiomarkerPanel] = None
+        try:
+            tissue_stage_text = (
+                f"{pathology.tissue_type.replace('_', ' ').title()}. "
+                + (f"{tnm_result.tnm_string()}. " if tnm_result and not tnm_result.is_fallback else "")
+                + f"Stage: {getattr(pathology, 'tissue_type', 'unknown')}."
+            )
+            _emit("biomarker_specialist", "Biomarker specialist: extracting molecular testing panel...", 59)
+            biomarker_panel = self.biomarker_specialist.extract(tissue_stage_text)
+            if biomarker_panel.is_fallback:
+                _emit("biomarker_specialist", f"Biomarker specialist unavailable ({biomarker_panel.error}) — Oncologist will infer", 60)
+            else:
+                _emit("biomarker_specialist", f"{biomarker_panel.summary()} (confidence: {biomarker_panel.confidence})", 60)
+                for t in biomarker_panel.tests_required[:3]:
+                    _emit("biomarker_specialist", f"  Test required: {t}", 60)
+        except Exception as e:
+            log.warning(f"Board: biomarker specialist error ({e}) — continuing")
+            _emit("biomarker_specialist", f"Biomarker specialist skipped: {e}", 60)
+
+        # ── Differential Diagnosis ────────────────────────────────────────────
+        differential_result = None
+        try:
+            _emit("differential", "Differential diagnosis: computing top-3 candidate diagnoses...", 61)
+            differential_result = self.differential_agent.analyse(
+                pathology=pathology,
+                vlm_opinion=vlm_opinion if vlm_opinion and vlm_opinion.is_available else None,
+                metadata=metadata,
+            )
+            if differential_result and differential_result.differentials:
+                top = differential_result.differentials[0]
+                _emit("differential", f"Primary: {top['diagnosis']} ({top['probability']:.0%}) | "
+                      f"DDx: {', '.join(d['diagnosis'] for d in differential_result.differentials[1:])}", 62)
+        except Exception as e:
+            log.warning(f"Board: differential diagnosis error ({e}) — continuing")
+            _emit("differential", f"Differential diagnosis skipped: {e}", 62)
+
+        # ── Agent 2d: Treatment Specialist ────────────────────────────────────
+        treatment_proposal: Optional[TreatmentProposal] = None
+        try:
+            biomarker_summary = ""
+            if biomarker_panel and not biomarker_panel.is_fallback and biomarker_panel.tests_required:
+                biomarker_summary = "Biomarker panel required: " + "; ".join(biomarker_panel.tests_required[:4]) + "."
+            tnm_stage_str = tnm_result.tnm_string() if (tnm_result and not tnm_result.is_fallback) else "Stage unknown"
+            _emit("treatment_specialist", "Treatment specialist: generating evidence-based treatment proposal...", 63)
+            treatment_proposal = self.treatment_specialist.plan(
+                tissue_type=pathology.tissue_type.replace("_", " ").title(),
+                tnm_stage=tnm_stage_str,
+                biomarker_summary=biomarker_summary,
+                metadata=metadata,
+            )
+            if treatment_proposal.is_fallback:
+                _emit("treatment_specialist", f"Treatment specialist unavailable ({treatment_proposal.error})", 64)
+            else:
+                _emit("treatment_specialist", f"NCCN Category {treatment_proposal.nccn_category}: {treatment_proposal.first_line[:80]}...", 64)
+        except Exception as e:
+            log.warning(f"Board: treatment specialist error ({e}) — continuing")
+            _emit("treatment_specialist", f"Treatment specialist skipped: {e}", 64)
+
         # ── Agent 3: Oncologist (initial draft) ──────────────────────────────
-        _emit("oncologist", "Llama 3.3 70B: synthesising initial management plan...", 60)
+        _emit("oncologist", "Llama 3.3 70B: synthesising initial management plan...", 65)
         plan = self.oncologist.synthesise(
             pathology,
             research,
             similar_cases=similar_cases,
             metadata=metadata,
+            biomarker_panel=biomarker_panel,
+            treatment_proposal=treatment_proposal,
         )
         _emit(
             "oncologist",
@@ -420,8 +514,35 @@ class AutonomousOncologyBoard:
                 vlm_reconciliation=vlm_reconciliation,
             )
 
+        # ── Patient Summary (plain-language) ─────────────────────────────
+        patient_summary_text: Optional[str] = None
+        try:
+            _emit("patient_summary", "Generating patient-friendly plain-language summary...", 88)
+            patient_summary_text = self.patient_summary_agent.generate(plan)
+            if patient_summary_text:
+                _emit("patient_summary", "Patient summary ready (plain English, 8th-grade reading level)", 89)
+        except Exception as e:
+            log.warning(f"Board: patient summary error ({e}) — continuing")
+            _emit("patient_summary", f"Patient summary skipped: {e}", 89)
+
+        # ── Clinical Trial Matching ───────────────────────────────────────
+        trial_matches: list = []
+        try:
+            _emit("trial_matcher", "Searching local ClinicalTrials.gov corpus for matching trials...", 90)
+            trial_matches = self.trial_matcher.find_matching(plan, top_k=5)
+            if trial_matches:
+                _emit("trial_matcher", f"{len(trial_matches)} potentially eligible trial(s) found", 91)
+                for tm in trial_matches[:2]:
+                    title = tm.title if hasattr(tm, "title") else str(tm.get("title", ""))
+                    _emit("trial_matcher", f"  → {title[:80]}", 91)
+            else:
+                _emit("trial_matcher", "No matching trials found in local corpus", 91)
+        except Exception as e:
+            log.warning(f"Board: trial matcher error ({e}) — continuing")
+            _emit("trial_matcher", f"Trial matching skipped: {e}", 91)
+
         # ── Digital Twin: 12-month PFS prediction ─────────────────────────
-        _emit("system", "Digital Twin: simulating 12-month PFS curve...", 90)
+        _emit("system", "Digital Twin: simulating 12-month PFS curve...", 92)
         pfs = simulate_pfs(pathology.tissue_type)
         plan.pfs_12mo = pfs.pfs_12mo
         plan.pfs_curve = pfs.curve_points
@@ -449,6 +570,11 @@ class AutonomousOncologyBoard:
             vlm_opinion=vlm_opinion,
             vlm_reconciliation=vlm_reconciliation,
             pathology_feedback=pathology_feedback,
+            biomarker_panel=biomarker_panel,
+            treatment_proposal=treatment_proposal,
+            differential_dx=differential_result,
+            patient_summary=patient_summary_text,
+            trial_matches=trial_matches,
         )
 
         # ── Board Memory: save this case for future similar-case retrieval ───

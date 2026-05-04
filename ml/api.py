@@ -43,6 +43,7 @@ from pydantic import BaseModel, Field
 
 from ml.board import AutonomousOncologyBoard, BoardResult
 from ml.models.llm_client import OllamaClient
+from collections import deque
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,6 +97,53 @@ class Job:
 _jobs: dict[str, Job] = {}
 _board: Optional[AutonomousOncologyBoard] = None
 
+# ── VRAM timeseries ring buffer (polled every 2s by background thread) ────────
+_VRAM_RING_SIZE = 300   # 300 × 2s = 10 minutes rolling window
+_vram_history: deque = deque(maxlen=_VRAM_RING_SIZE)
+_vram_monitor_running = False
+
+
+def _vram_monitor_loop():
+    """Background thread: poll rocm-smi every 2s and append to ring buffer."""
+    import subprocess
+    import re
+    global _vram_monitor_running
+    _vram_monitor_running = True
+    while _vram_monitor_running:
+        ts = time.time()
+        vram_used_gb  = 0.0
+        vram_total_gb = 192.0
+        try:
+            result = subprocess.run(
+                ["rocm-smi", "--showmeminfo", "vram", "--json"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                for card in data.values():
+                    used_bytes  = int(card.get("VRAM Total Used Memory (B)", 0))
+                    total_bytes = int(card.get("VRAM Total Memory (B)", 192 * 1024**3))
+                    vram_used_gb  = round(used_bytes  / (1024 ** 3), 2)
+                    vram_total_gb = round(total_bytes / (1024 ** 3), 2)
+                    break
+        except (FileNotFoundError, json.JSONDecodeError, subprocess.TimeoutExpired, Exception):
+            # Fallback: try nvidia-smi or just report 0
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    vram_used_gb  = round(torch.cuda.memory_allocated(0) / 1024**3, 2)
+                    vram_total_gb = round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 2)
+            except Exception:
+                pass
+
+        _vram_history.append({
+            "ts": ts,
+            "used_gb":  vram_used_gb,
+            "total_gb": vram_total_gb,
+            "pct":      round(vram_used_gb / vram_total_gb * 100, 1) if vram_total_gb > 0 else 0.0,
+        })
+        time.sleep(2)
+
 
 # ── App lifecycle ────────────────────────────────────────────────────────────
 @asynccontextmanager
@@ -108,7 +156,16 @@ async def lifespan(app: FastAPI):
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.3:70b"),
     )
     log.info("AOB API: board initialised — ready to accept cases")
+
+    # Start VRAM monitor background thread
+    vram_thread = threading.Thread(target=_vram_monitor_loop, daemon=True)
+    vram_thread.start()
+    log.info("AOB API: VRAM monitor started (polling every 2s)")
+
     yield
+
+    global _vram_monitor_running
+    _vram_monitor_running = False
     log.info("AOB API: shutting down")
 
 
@@ -738,6 +795,304 @@ async def get_attention_scores(job_id: str):
             status_code=500,
             detail=f"Attention score extraction failed: {e}",
         )
+
+
+# ── VRAM Timeseries ───────────────────────────────────────────────────────────
+
+@app.get("/api/vram/history")
+async def vram_history(seconds: int = 300):
+    """
+    GET /api/vram/history?seconds=300
+
+    Returns the rolling VRAM usage timeseries for the last N seconds.
+
+    Response:
+        {
+          "points": [{"ts": float, "used_gb": float, "total_gb": float, "pct": float}],
+          "current_gb": float,
+          "total_gb": float,
+          "h100_limit_gb": 80,
+          "mi300x_total_gb": 192
+        }
+    """
+    cutoff = time.time() - seconds
+    points = [p for p in list(_vram_history) if p["ts"] >= cutoff]
+
+    current_gb = points[-1]["used_gb"] if points else 0.0
+    total_gb   = points[-1]["total_gb"] if points else 192.0
+
+    return JSONResponse({
+        "points":          points,
+        "current_gb":      current_gb,
+        "total_gb":        total_gb,
+        "h100_limit_gb":   80,       # The comparison line for the UI
+        "mi300x_total_gb": 192,
+        "oom_if_h100":     current_gb > 80,
+    })
+
+
+@app.get("/api/vram/current")
+async def vram_current():
+    """GET /api/vram/current — single VRAM reading."""
+    if _vram_history:
+        latest = _vram_history[-1]
+    else:
+        latest = {"ts": time.time(), "used_gb": 0.0, "total_gb": 192.0, "pct": 0.0}
+    return JSONResponse({**latest, "h100_limit_gb": 80, "oom_if_h100": latest["used_gb"] > 80})
+
+
+# ── Concurrent Multi-Case Stress Test ─────────────────────────────────────────
+
+class ConcurrentRunRequest(BaseModel):
+    cases: list[dict] = Field(
+        description="List of case configs [{case_id, patches_b64, metadata}]. Default: 5 demo cases.",
+        default=None,
+    )
+    n_demo_cases: int = Field(
+        default=5,
+        description="If cases is None, generate this many demo cases.",
+        ge=1, le=10,
+    )
+
+
+@app.post("/api/concurrent/run")
+async def concurrent_run(
+    request: ConcurrentRunRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    POST /api/concurrent/run
+
+    Fire multiple AOB analysis jobs simultaneously and return a bundle with:
+    - Per-case job IDs (poll /status/{job_id} for streaming)
+    - Peak VRAM usage during the run
+    - Wall-clock timing per case
+
+    This endpoint is the live proof that multiple cases can run concurrently
+    on the MI300X 192 GB unified memory.
+
+    Response:
+        {
+          "run_id": str,
+          "n_cases": int,
+          "job_ids": [str],
+          "vram_at_start_gb": float,
+          "message": str
+        }
+    """
+    if _board is None:
+        raise HTTPException(status_code=503, detail="Board not initialised")
+
+    run_id = f"concurrent_{uuid.uuid4().hex[:8]}"
+
+    # Build case list
+    cases = request.cases
+    if cases is None:
+        cases = _build_demo_cases(request.n_demo_cases)
+
+    vram_at_start = _vram_history[-1]["used_gb"] if _vram_history else 0.0
+
+    job_ids = []
+    for case_cfg in cases:
+        case_id     = case_cfg.get("case_id") or f"{run_id}_{len(job_ids)}"
+        patches_b64 = case_cfg.get("patches_b64") or _make_demo_patches(4)
+        metadata    = case_cfg.get("metadata") or {}
+
+        # Decode patches
+        try:
+            images_bytes = [base64.b64decode(p) for p in patches_b64]
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Bad base64 in case {case_id}: {e}")
+
+        job_id = uuid.uuid4().hex[:12]
+        job    = Job(job_id, case_id)
+        _jobs[job_id] = job
+
+        threading.Thread(
+            target=_run_board_job,
+            args=(job, images_bytes, metadata),
+            daemon=True,
+        ).start()
+
+        job_ids.append(job_id)
+
+    return JSONResponse({
+        "run_id":           run_id,
+        "n_cases":          len(job_ids),
+        "job_ids":          job_ids,
+        "vram_at_start_gb": vram_at_start,
+        "message": (
+            f"{len(job_ids)} cases launched simultaneously. "
+            "Poll /api/vram/history to watch VRAM climb in real time. "
+            "H100 OOM threshold: 80 GB."
+        ),
+    })
+
+
+def _build_demo_cases(n: int) -> list[dict]:
+    """Generate N demo case configurations for the concurrent stress test."""
+    import random
+    demo_cases = [
+        {"case_id": "DEMO-LUNG-ADENO",    "metadata": {"tissue_type": "lung_adenocarcinoma",           "age": 63, "sex": "M"}},
+        {"case_id": "DEMO-COLON-ADENO",   "metadata": {"tissue_type": "colon_adenocarcinoma",          "age": 58, "sex": "F"}},
+        {"case_id": "DEMO-LUNG-SCC",      "metadata": {"tissue_type": "lung_squamous_cell_carcinoma",  "age": 71, "sex": "M"}},
+        {"case_id": "DEMO-LUNG-BENIGN",   "metadata": {"tissue_type": "lung_benign_tissue",            "age": 45, "sex": "F"}},
+        {"case_id": "DEMO-COLON-BENIGN",  "metadata": {"tissue_type": "colon_benign_tissue",           "age": 52, "sex": "M"}},
+    ]
+    return [
+        {**demo_cases[i % len(demo_cases)], "patches_b64": _make_demo_patches(4)}
+        for i in range(n)
+    ]
+
+
+def _make_demo_patches(n: int) -> list[str]:
+    """Generate N random 224×224 RGB patches as base64 JPEG."""
+    import io as _io
+    import numpy as _np
+    from PIL import Image as _Img
+
+    patches = []
+    for _ in range(n):
+        arr = _np.random.randint(100, 255, (224, 224, 3), dtype=_np.uint8)
+        buf = _io.BytesIO()
+        _Img.fromarray(arr).save(buf, format="JPEG", quality=85)
+        patches.append(base64.b64encode(buf.getvalue()).decode())
+    return patches
+
+
+# ── Training reports & benchmark endpoints ─────────────────────────────────────
+
+@app.get("/api/training/reports")
+async def training_reports():
+    """Return all LoRA adapter training reports found in checkpoints dir."""
+    checkpoints_dir = Path(__file__).parent / "models" / "checkpoints"
+    reports = {}
+    for task in ["tnm_lora", "biomarker_lora", "treatment_lora", "giga_head"]:
+        report_path = checkpoints_dir / task / "training_report.json"
+        if report_path.exists():
+            try:
+                with open(report_path) as f:
+                    reports[task] = json.load(f)
+            except Exception:
+                reports[task] = {"error": "Could not parse report"}
+        else:
+            reports[task] = {"status": "not_trained_yet"}
+    return JSONResponse({"reports": reports})
+
+
+@app.get("/api/benchmark/latest")
+async def benchmark_latest():
+    """Return the latest ClinicalEval benchmark results if available."""
+    results_dir = Path(__file__).parent.parent / "eval" / "results"
+    eval_files  = sorted(results_dir.glob("clinical_eval_*.json")) if results_dir.exists() else []
+    if not eval_files:
+        return JSONResponse({"status": "no_results_yet", "hint": "Run: python -m eval.clinical_eval"})
+
+    latest = eval_files[-1]
+    try:
+        with open(latest) as f:
+            data = json.load(f)
+        return JSONResponse(data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not parse benchmark results: {e}")
+
+
+@app.post("/api/counterfactual/{job_id}")
+async def run_counterfactual(job_id: str, edits: dict):
+    """
+    POST /api/counterfactual/{job_id}
+
+    Run counterfactual replanning on a completed case.
+
+    Body: {"egfr_status": "EGFR negative", "tnm_stage": "Stage II"}
+
+    Returns the CounterfactualPlan JSON.
+    """
+    if job_id not in _jobs:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    job = _jobs[job_id]
+    if job.status != JobStatus.DONE:
+        raise HTTPException(status_code=409, detail="Job not complete")
+    if job.result is None or job.result.management_plan is None:
+        raise HTTPException(status_code=500, detail="No management plan found")
+
+    try:
+        if _board is None:
+            raise RuntimeError("Board not initialised")
+        from ml.agents.counterfactual import CounterfactualAgent
+        agent  = CounterfactualAgent(llm_client=_board.llm)
+        result = agent.replan(job.result.management_plan, edits)
+        return JSONResponse(result.to_dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── WSI analysis endpoint ─────────────────────────────────────────────────────
+
+class WSIAnalyzeRequest(BaseModel):
+    slide_path: str = Field(description="Path to .svs/.ndpi/.tiff WSI file on server filesystem")
+    case_id:    Optional[str] = None
+    metadata:   dict = Field(default_factory=dict)
+    max_patches: int = Field(default=64, ge=1, le=512)
+
+
+@app.post("/analyze/wsi")
+async def analyze_wsi(request: WSIAnalyzeRequest, background_tasks: BackgroundTasks):
+    """
+    POST /analyze/wsi
+
+    Accepts a server-side WSI file path, extracts patches via openslide,
+    and runs the full AOB pipeline. Returns a job_id for SSE streaming.
+    """
+    if _board is None:
+        raise HTTPException(status_code=503, detail="Board not initialised")
+
+    slide_path = Path(request.slide_path)
+    if not slide_path.exists():
+        raise HTTPException(status_code=404, detail=f"Slide not found: {request.slide_path}")
+
+    case_id = request.case_id or f"wsi_{slide_path.stem}"
+    job_id  = uuid.uuid4().hex[:12]
+    job     = Job(job_id, case_id)
+    _jobs[job_id] = job
+
+    def _run_wsi():
+        from PIL import Image
+        try:
+            from ml.data.wsi import extract_patches
+        except ImportError:
+            job.status = JobStatus.FAILED
+            job.error  = "openslide-python not installed"
+            return
+
+        images_bytes = []
+        try:
+            for patch_img, (x, y) in extract_patches(
+                slide_path, max_patches=request.max_patches
+            ):
+                buf = io.BytesIO()
+                patch_img.save(buf, format="JPEG")
+                images_bytes.append(buf.getvalue())
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error  = str(e)
+            return
+
+        if not images_bytes:
+            job.status = JobStatus.FAILED
+            job.error  = "No tissue patches extracted from slide"
+            return
+
+        _run_board_job(job, images_bytes, request.metadata)
+
+    threading.Thread(target=_run_wsi, daemon=True).start()
+
+    return AnalyzeResponse(
+        job_id=job_id,
+        case_id=case_id,
+        status=JobStatus.QUEUED,
+        message=f"WSI analysis queued: {slide_path.name} ({request.max_patches} max patches)",
+    )
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────
