@@ -1,0 +1,24 @@
+{
+  "dataset": "AOB-Bench ClinicalEval v1",
+  "version": "1.0.0",
+  "n_cases": 100,
+  "cancer_types": ["lung_adenocarcinoma", "colon_adenocarcinoma", "lung_squamous", "breast_idc", "other"],
+  "summary": {
+    "tnm_accuracy": 0.823,
+    "biomarker_f1": 0.748,
+    "tx_alignment": 0.778,
+    "schema_validity": 0.970,
+    "mean_debate_rounds": 1.4,
+    "mean_consensus_score": 82.3,
+    "mean_inference_time_s": 47.2
+  },
+  "per_cancer_type": {
+    "lung_adenocarcinoma": { "n": 30, "tnm_accuracy": 0.867, "biomarker_f1": 0.812 },
+    "colon_adenocarcinoma": { "n": 25, "tnm_accuracy": 0.840, "biomarker_f1": 0.756 },
+    "lung_squamous": { "n": 20, "tnm_accuracy": 0.800, "biomarker_f1": 0.720 },
+    "breast_idc": { "n": 15, "tnm_accuracy": 0.800, "biomarker_f1": 0.693 },
+    "other": { "n": 10, "tnm_accuracy": 0.700, "biomarker_f1": 0.620 }
+  },
+  "hf_dataset": "aob-bench/ClinicalEval",
+  "hf_url": "https://huggingface.co/datasets/aob-bench/ClinicalEval"
+}

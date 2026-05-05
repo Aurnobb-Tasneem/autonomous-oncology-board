@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import VramBar from "@/components/VramBar";
 import CaseCard from "@/components/CaseCard";
+import H100Simulator from "@/components/H100Simulator";
+import Vram3D from "@/components/Vram3D";
+import Link from "next/link";
 import { analyzeImages, getDemoCases, type DemoCase } from "@/lib/api";
 
 const STATS = [
@@ -136,6 +139,22 @@ export default function HomePage() {
               No model swapping. No OOM. Just results.
             </p>
 
+            {/* Quick nav links */}
+            <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
+              <Link href="/story" className="btn-teal" style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", textDecoration: "none" }}>
+                📖 The Story
+              </Link>
+              <Link href="/specialists" className="btn-ghost" style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", textDecoration: "none" }}>
+                🧬 Specialists
+              </Link>
+              <Link href="/benchmark" className="btn-ghost" style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", textDecoration: "none" }}>
+                📊 Benchmark
+              </Link>
+              <Link href="/concurrent" className="btn-ghost" style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", textDecoration: "none" }}>
+                ⚡ Concurrent
+              </Link>
+            </div>
+
             {/* Demo case cards */}
             <div>
               <p
@@ -158,9 +177,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Right: VRAM widget */}
-          <div style={{ position: "sticky", top: "80px" }}>
+          {/* Right: VRAM widget + 3D cube */}
+          <div style={{ position: "sticky", top: "80px", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
             <VramBar />
+            <Vram3D />
           </div>
         </section>
 
@@ -194,6 +214,19 @@ export default function HomePage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ── VRAM Simulator ───────────────────────────────────────────────── */}
+        <section style={{ maxWidth: "1100px", margin: "0 auto", padding: "0 2rem 3rem" }}>
+          <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+            <h2 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-primary)", marginBottom: "0.5rem" }}>
+              Why Only AMD Makes This Possible
+            </h2>
+            <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", maxWidth: "600px", margin: "0 auto" }}>
+              All five AI specialists live simultaneously in the MI300X&apos;s 192 GB unified memory. Toggle components to see when an H100 runs out of room.
+            </p>
+          </div>
+          <H100Simulator />
         </section>
 
         {/* ── How it works ────────────────────────────────────────────────── */}

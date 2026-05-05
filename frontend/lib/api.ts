@@ -21,9 +21,14 @@ export interface VramInfo {
   percent_used: number;
   model_breakdown?: {
     gigapath_gb: number;
+    qwen_vl_gb?: number;
     llama_gb: number;
+    llama_8b_gb?: number;
+    lora_gb?: number;
+    tnm_lora_gb?: number;
     kv_cache_gb: number;
     runtime_overhead_gb?: number | null;
+    [key: string]: number | null | undefined;
   };
   /** Real per-process VRAM from rocm-smi --showpids  e.g. { uvicorn: 20.8, ollama: 48.2 } */
   processes?: Record<string, number> | null;
@@ -303,6 +308,83 @@ export function streamJob(
   };
 
   return () => es.close();
+}
+
+// ── New endpoint types ─────────────────────────────────────────────────────
+
+export interface TrainingReport {
+  adapter: string;
+  base_model: string;
+  rank: number;
+  alpha: number;
+  train_loss: number;
+  eval_loss?: number;
+  best_epoch?: number;
+  total_steps: number;
+  learning_rate: number;
+  batch_size: number;
+  finished_at?: string;
+}
+
+export interface ConcurrentRunRequest {
+  cases: string[];
+}
+
+export interface ConcurrentRunResponse {
+  run_id: string;
+  job_ids: string[];
+  cases: string[];
+  started_at: string;
+}
+
+export interface CounterfactualRequest {
+  hypothesis: string;
+}
+
+export interface CounterfactualResponse {
+  job_id: string;
+  hypothesis: string;
+  original_first_line: string;
+  revised_plan: Partial<ManagementPlan>;
+  diff_summary: string;
+}
+
+// ── New API Functions ───────────────────────────────────────────────────────
+
+export async function getTrainingReports(): Promise<TrainingReport[]> {
+  try {
+    const res = await fetch(`${BASE}/api/training/reports`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.reports ?? data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function runConcurrent(cases: string[]): Promise<ConcurrentRunResponse> {
+  const res = await fetch(`${BASE}/api/concurrent/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cases }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Concurrent run failed: ${res.status}`);
+  return res.json();
+}
+
+export async function runCounterfactual(
+  jobId: string,
+  hypothesis: string
+): Promise<CounterfactualResponse> {
+  const res = await fetch(`${BASE}/api/counterfactual/${jobId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hypothesis }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Counterfactual failed: ${res.status}`);
+  return res.json();
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

@@ -9,7 +9,8 @@ import StatusBadge from "@/components/StatusBadge";
 import { streamJob, type SseStep, type JobStatus } from "@/lib/api";
 
 const AGENT_META: Record<string, { icon: string; label: string; color: string }> = {
-  pathologist: { icon: "🔬", label: "Pathologist", color: "#0d9488" },
+  pathologist: { icon: "🔬", label: "GigaPath", color: "#0d9488" },
+  second_opinion: { icon: "🧠", label: "Qwen-VL", color: "#22c55e" },
   researcher: { icon: "📚", label: "Researcher", color: "#7c3aed" },
   oncologist: { icon: "👨‍⚕️", label: "Oncologist", color: "#0891b2" },
 };
@@ -53,7 +54,7 @@ function resolveAgent(step: SseStep): string {
       a.includes("vlm-pathologist") ||
       a.includes("second_opinion")
     ) {
-      return "pathologist"; // snapshot strip only has 3 tiles — keep VLM updates visible under Pathologist
+      return "second_opinion";
     }
     return step.agent;
   }
@@ -62,7 +63,7 @@ function resolveAgent(step: SseStep): string {
   if (type.includes("patholog") || type.includes("gigapath")) return "pathologist";
   if (type.includes("research")) return "researcher";
   if (type.includes("oncolog")) return "oncologist";
-  if (type.includes("qwen") || type.includes("vlm_pathologist") || type.includes("vlm")) return "pathologist";
+  if (type.includes("qwen") || type.includes("vlm_pathologist") || type.includes("vlm")) return "second_opinion";
   return "system";
 }
 
@@ -223,8 +224,8 @@ export default function AnalyzePage() {
               <h2 style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)", marginBottom: "1.25rem" }}>
                 Live Agent Snapshot
               </h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
-                {(["pathologist", "researcher", "oncologist"] as const).map((agent) => {
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
+                {(["pathologist", "second_opinion", "researcher", "oncologist"] as const).map((agent) => {
                   const meta = AGENT_META[agent];
                   const latest = getLatestStep(agent);
                   const active = Boolean(latest);

@@ -59,6 +59,34 @@ export default function NavBar() {
         </div>
       </Link>
 
+      {/* Nav links */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.1rem" }}>
+        {[
+          { href: "/specialists", label: "Specialists" },
+          { href: "/benchmark", label: "Benchmark" },
+          { href: "/concurrent", label: "Concurrent" },
+          { href: "/story", label: "Story" },
+        ].map(({ href, label }) => (
+          <Link
+            key={href}
+            href={href}
+            style={{
+              padding: "0.3rem 0.7rem",
+              borderRadius: "6px",
+              fontSize: "0.82rem",
+              fontWeight: 500,
+              color: "var(--text-muted)",
+              textDecoration: "none",
+              transition: "color 0.15s ease",
+            }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.color = "var(--text-primary)"; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.color = "var(--text-muted)"; }}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
       {/* Right side badges */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
         {/* AMD badge */}

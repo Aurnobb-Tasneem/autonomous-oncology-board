@@ -10,6 +10,8 @@ import HeatmapViewer from "@/components/HeatmapViewer";
 import PfsChart from "@/components/PfsChart";
 import BoardMemoryPanel from "@/components/BoardMemoryPanel";
 import StatusBadge from "@/components/StatusBadge";
+import CounterfactualModal from "@/components/CounterfactualModal";
+import PatientSummaryTab from "@/components/PatientSummaryTab";
 import { getReport, type BoardResult } from "@/lib/api";
 
 function Section({ title, children, icon }: { title: string; children: React.ReactNode; icon?: string }) {
@@ -31,6 +33,7 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionNote, setActionNote] = useState<string | null>(null);
+  const [reportTab, setReportTab] = useState<"clinical" | "patient">("clinical");
 
   useEffect(() => {
     if (!jobId) return;
@@ -144,8 +147,55 @@ export default function ReportPage() {
           )}
         </div>
 
+        {/* Tab switcher: Clinical / Patient */}
+        <div
+          style={{
+            display: "inline-flex",
+            background: "rgba(5,10,25,0.6)",
+            border: "1px solid var(--border)",
+            borderRadius: "10px",
+            padding: "0.25rem",
+            marginBottom: "1.5rem",
+            gap: "0.25rem",
+          }}
+        >
+          {(["clinical", "patient"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setReportTab(tab)}
+              style={{
+                padding: "0.4rem 1.1rem",
+                borderRadius: "7px",
+                border: "none",
+                fontSize: "0.8rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                background: reportTab === tab ? (tab === "patient" ? "rgba(251,243,219,0.08)" : "rgba(13,148,136,0.15)") : "transparent",
+                color: reportTab === tab ? (tab === "patient" ? "rgba(251,243,219,0.9)" : "var(--teal-light)") : "var(--text-muted)",
+                borderBottom: reportTab === tab ? `2px solid ${tab === "patient" ? "rgba(251,243,219,0.4)" : "var(--teal-light)"}` : "2px solid transparent",
+              }}
+            >
+              {tab === "clinical" ? "🩺 Clinical (NCCN)" : "👤 Patient (Plain English)"}
+            </button>
+          ))}
+        </div>
+
+        {/* Patient Summary Tab */}
+        {reportTab === "patient" && plan && (
+          <div style={{ marginBottom: "1.5rem" }}>
+            <PatientSummaryTab
+              summary={plan.patient_summary ?? ""}
+              diagnosis={plan.diagnosis.primary}
+              stage={plan.diagnosis.tnm_stage}
+              firstLineTreatment={plan.treatment_plan.first_line}
+              immediateActions={plan.immediate_actions ?? []}
+            />
+          </div>
+        )}
+
         {/* Two-column layout */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+        {reportTab === "clinical" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
 
           {/* LEFT column */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -223,8 +273,20 @@ export default function ReportPage() {
                   }}
                 >
                   <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600, marginBottom: "0.3rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>First-line</div>
-                  <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--teal-light)", lineHeight: 1.4 }}>
-                    {plan.treatment_plan.first_line}
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--teal-light)", lineHeight: 1.4, flex: 1 }}>
+                      {plan.treatment_plan.first_line}
+                    </div>
+                    <CounterfactualModal
+                      jobId={jobId}
+                      treatmentText={plan.treatment_plan.first_line}
+                      hypothesis="What if EGFR negative?"
+                    />
+                    <CounterfactualModal
+                      jobId={jobId}
+                      treatmentText={plan.treatment_plan.first_line}
+                      hypothesis="What if MSI-H?"
+                    />
                   </div>
                 </div>
                 {plan.treatment_plan.rationale && (
@@ -315,7 +377,7 @@ export default function ReportPage() {
               </Section>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Board consensus */}
         {plan?.board_consensus && (

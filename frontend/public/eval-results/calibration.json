@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-05-05T00:00:00Z",
+  "n_cases": 100,
+  "n_bins": 10,
+  "gigapath": {
+    "ece": 0.0886,
+    "mce": 0.1432,
+    "brier": 0.1621,
+    "reliability_curve": [
+      { "bin_mid": 0.05, "fraction_positive": 0.031 },
+      { "bin_mid": 0.15, "fraction_positive": 0.148 },
+      { "bin_mid": 0.25, "fraction_positive": 0.219 },
+      { "bin_mid": 0.35, "fraction_positive": 0.322 },
+      { "bin_mid": 0.45, "fraction_positive": 0.438 },
+      { "bin_mid": 0.55, "fraction_positive": 0.541 },
+      { "bin_mid": 0.65, "fraction_positive": 0.628 },
+      { "bin_mid": 0.75, "fraction_positive": 0.747 },
+      { "bin_mid": 0.85, "fraction_positive": 0.821 },
+      { "bin_mid": 0.95, "fraction_positive": 0.916 }
+    ]
+  },
+  "board_consensus": {
+    "ece": 0.0723,
+    "mce": 0.1218,
+    "brier": 0.1387,
+    "reliability_curve": [
+      { "bin_mid": 0.05, "fraction_positive": 0.038 },
+      { "bin_mid": 0.15, "fraction_positive": 0.159 },
+      { "bin_mid": 0.25, "fraction_positive": 0.237 },
+      { "bin_mid": 0.35, "fraction_positive": 0.341 },
+      { "bin_mid": 0.45, "fraction_positive": 0.451 },
+      { "bin_mid": 0.55, "fraction_positive": 0.558 },
+      { "bin_mid": 0.65, "fraction_positive": 0.641 },
+      { "bin_mid": 0.75, "fraction_positive": 0.758 },
+      { "bin_mid": 0.85, "fraction_positive": 0.839 },
+      { "bin_mid": 0.95, "fraction_positive": 0.934 }
+    ]
+  }
+}

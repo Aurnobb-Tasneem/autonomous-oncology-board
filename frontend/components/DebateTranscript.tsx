@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { type DebateRound } from "@/lib/api";
+import RevisionDiff from "@/components/RevisionDiff";
 
 type TranscriptMessage = {
   round: number;
@@ -216,8 +217,15 @@ export default function DebateTranscript({ rounds }: { rounds: DebateRound[] }) 
                       <div style={cfg.bubble}>
                         {m.message}
                         {m.revised_first_line && (
-                          <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid rgba(148,163,184,0.12)", fontSize: "0.76rem", color: "var(--text-muted)" }}>
-                            Revised first-line: <span style={{ color: "var(--teal-light)", fontWeight: 600 }}>{m.revised_first_line}</span>
+                          <div style={{ marginTop: "0.6rem", paddingTop: "0.6rem", borderTop: "1px solid rgba(148,163,184,0.12)" }}>
+                            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, marginBottom: "0.35rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              First-line treatment revised
+                            </div>
+                            <RevisionDiff
+                              before={m.message.split(".")[0] ?? ""}
+                              after={m.revised_first_line}
+                              label="Revision diff"
+                            />
                           </div>
                         )}
                       </div>
