@@ -13,16 +13,22 @@
 
 ## What AOB Does
 
-AOB simulates a hospital multidisciplinary tumour board (MTB) with three AI agents:
+AOB simulates a hospital multidisciplinary tumour board (MTB) with **vision + language** pathologists, then researcher and oncologist:
 
 ```
  Patient Case (WSI patches + metadata)
           │
  ┌────────▼────────┐
- │  PATHOLOGIST    │  Prov-GigaPath ViT-Giant 1.1B
- │  Agent 1        │  → Heatmaps · Uncertainty · Classification
+ │  PATHOLOGIST    │  Prov-GigaPath ViT-Giant 1.1B (Agent 1a)
+ │  (embedding FM) │  → Heatmaps · Uncertainty · Tissue classification
  └────────┬────────┘
-          │ PathologyReport JSON
+          │
+ ┌────────▼────────┐
+ │  VLM PATHOLOGIST │  Qwen2.5-VL-7B-Instruct (Agent 1b, HuggingFace)
+ │  (pixel second   │  → Direct patch images → morphology text · tissue guess
+ │   opinion)       │  → Reconciled with GigaPath (MetaEvaluator) before RAG
+ └────────┬────────┘
+          │ PathologyReport + VLMOpinion + reconciliation
  ┌────────▼────────┐
  │  RESEARCHER     │  Qdrant RAG + Llama 3.3 70B
  │  Agent 2        │  → 500-doc NCCN/TCGA corpus · Citations
@@ -61,25 +67,28 @@ Benchmark dataset: [aob-bench/ClinicalEval on HuggingFace](https://huggingface.c
 
 The architecture requires simultaneous in-memory residency of:
 
-| Component | VRAM |
-|-----------|------|
-| Llama 3.3 70B (FP8) | 70 GB |
-| Llama 3.1 8B + 3 LoRA adapters | 16 GB |
-| Prov-GigaPath (FP16) | 3 GB |
-| vLLM KV Cache (full debate) | 30 GB |
-| Qdrant + overhead | 9 GB |
-| **Total** | **~128 GB** |
+| Component | VRAM (order of magnitude) |
+|-----------|---------------------------|
+| Llama 3.3 70B (FP8) | ~70 GB |
+| Llama 3.1 8B + 3 LoRA adapters | ~16 GB |
+| Prov-GigaPath (FP16) | ~3 GB |
+| **Qwen2.5-VL-7B-Instruct (BF16)** | **~15 GB** *(Agent 1b — loads via Transformers when available)* |
+| vLLM KV Cache (full debate) | ~30 GB |
+| Qdrant + overhead | ~9 GB |
+| **Total (all models resident)** | **~143 GB** |
 
-**NVIDIA H100 = 80 GB. This system requires 128 GB. The math does not work on H100.**
+If the VLM fails to load (missing `HF_TOKEN`, OOM, or import error), the board **continues with GigaPath only** and logs `Qwen2-VL skipped …`.
 
-The MI300X's 192 GB HBM3 unified pool provides 64 GB of headroom for 3 concurrent cases without model swapping or cache eviction.
+**NVIDIA H100 = 80 GB. A full stack with GigaPath + 70B + Qwen-VL + KV headroom exceeds 80 GB. The math does not work on a single H100.**
+
+The MI300X's 192 GB HBM3 unified pool leaves headroom once GigaPath, Qwen-VL, 70B, adapters, and KV cache are all resident (~143 GB in the reference budget above).
 
 ```
 H100: ████████████████████████████████████████░ 80/80 GB → OOM ✗
-MI300X: ██████████████████████████░░░░░░░░░░░░░ 128/192 GB ✓
+MI300X: ██████████████████████████████░░░░░░░░░ ~143/192 GB full stack ✓
 ```
 
-Measured peak: **88.2 GB / 191.7 GB** (verified via `rocm-smi`)
+Measured peak (Day-1 smoke, not all components maxed concurrently): **88.2 GB / 191.7 GB** (verified via `rocm-smi`).
 
 ---
 
@@ -117,6 +126,7 @@ The final report includes the full **Debate Transcript** and **revision diff**.
 
 | Feature | Description |
 |---------|-------------|
+| **Qwen2.5-VL second opinion** | Agent 1b: native multimodal vision on up to 4 patches; reconciled with GigaPath before RAG (`ml/agents/vlm_pathologist.py`) |
 | **Triple-Modal Explainability** | Attention Rollout + Grad-CAM++ + Integrated Gradients per patch |
 | **MC Dropout Uncertainty** | N=20 stochastic passes → "91% ± 4.2%" confidence intervals |
 | **Differential Diagnosis** | Top-3 diagnoses with posterior probabilities |
@@ -148,6 +158,8 @@ The final report includes the full **Debate Transcript** and **revision diff**.
 ```bash
 # ROCm 6.x installed
 # Python 3.10+
+# HuggingFace token (GigaPath is gated; Qwen2.5-VL download recommended)
+#   export HF_TOKEN=hf_...
 # Ollama with ROCm support
 ollama pull llama3.3:70b
 ```
@@ -197,6 +209,7 @@ aob/
 ├── ml/
 │   ├── agents/
 │   │   ├── pathologist.py          # GigaPath inference + heatmaps
+│   │   ├── vlm_pathologist.py      # Qwen2.5-VL-7B pixel-level second opinion
 │   │   ├── researcher.py           # RAG synthesis
 │   │   ├── oncologist.py           # Llama 3.3 70B synthesis + debate
 │   │   ├── biomarker_specialist.py # LoRA biomarker extraction
@@ -263,11 +276,20 @@ print(ds[0])
 
 ## Model Cards
 
-| Model | Base | Task | Adapter Rank | HF Repo |
-|-------|------|------|-------------|---------|
-| `tnm_specialist` | Llama 3.1 8B Instruct | TNM staging | r=16, α=32 | `aob-bench/tnm-specialist-lora` |
-| `biomarker_specialist` | Llama 3.1 8B Instruct | Biomarker extraction | r=16, α=32 | `aob-bench/biomarker-specialist-lora` |
-| `treatment_specialist` | Llama 3.1 8B Instruct | Treatment planning | r=16, α=32 | `aob-bench/treatment-specialist-lora` |
+| Model | Base | Task | Notes |
+|-------|------|------|--------|
+| **Qwen2.5-VL-7B-Instruct** | `Qwen/Qwen2.5-VL-7B-Instruct` | Visual morphology + tissue second opinion | Served in-process with Transformers; requires `qwen-vl-utils` (see `requirements.txt`) |
+| `tnm_specialist` | Llama 3.1 8B Instruct | TNM staging | r=16, α=32 |
+| `biomarker_specialist` | Llama 3.1 8B Instruct | Biomarker extraction | r=16, α=32 |
+| `treatment_specialist` | Llama 3.1 8B Instruct | Treatment planning | r=16, α=32 |
+
+LoRA adapter HuggingFace repos (when published):
+
+| Adapter | HF Repo |
+|---------|---------|
+| `tnm_specialist` | `aob-bench/tnm-specialist-lora` |
+| `biomarker_specialist` | `aob-bench/biomarker-specialist-lora` |
+| `treatment_specialist` | `aob-bench/treatment-specialist-lora` |
 
 ---
 
@@ -294,4 +316,4 @@ Always consult a qualified oncologist for medical decisions.
 
 ---
 
-*Built on AMD MI300X · ROCm 6.x · Prov-GigaPath · Llama 3.3 70B · vLLM · Qdrant · FastAPI*
+*Built on AMD MI300X · ROCm 6.x · Prov-GigaPath · Qwen2.5-VL-7B · Llama 3.3 70B · vLLM · Qdrant · FastAPI*
