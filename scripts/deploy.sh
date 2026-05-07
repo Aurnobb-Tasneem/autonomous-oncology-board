@@ -3,14 +3,17 @@
 # =================
 # Pull latest code from GitHub and restart the AOB API.
 # Called automatically by GitHub Actions on every push to main.
-# Can also be run manually on the AMD host:
+# Can also be run manually on the AMD host (from any clone path):
 #
-#   bash /root/aob/scripts/deploy.sh
+#   bash scripts/deploy.sh
+#
+# Optional: CONTAINER=rocm2 bash scripts/deploy.sh
 
 set -euo pipefail
 
-REPO_DIR="/root/aob"
-CONTAINER="rocm"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONTAINER="${CONTAINER:-rocm}"
 API_URL="http://localhost:8000/health"
 HEALTH_RETRIES=30      # 30 × 2s = 60s max wait
 HEALTH_INTERVAL=2

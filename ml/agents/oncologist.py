@@ -177,6 +177,8 @@ class OncologistAgent:
         research: ResearchSummary,
         similar_cases: Optional[list[dict]] = None,
         metadata: Optional[dict] = None,
+        biomarker_panel: Optional[dict] = None,
+        treatment_proposal: Optional[dict] = None,
     ) -> str:
         tissue = pathology.tissue_type.replace("_", " ").title()
         stage  = TISSUE_STAGE_MAP.get(pathology.tissue_type, "Unknown stage")
@@ -240,6 +242,27 @@ class OncologistAgent:
 
         metadata_block = "\n".join(metadata_lines) if metadata_lines else "none"
 
+        # ── Biomarker panel (from Biomarker specialist) ───────────────────────
+        biomarker_panel_section = ""
+        if biomarker_panel:
+            lines = ["=== MOLECULAR BIOMARKER PANEL RESULTS ==="]
+            for marker, detail in biomarker_panel.items():
+                if isinstance(detail, dict):
+                    score = detail.get("score", "?")
+                    level = detail.get("level", "unknown")
+                    lines.append(f"- {marker}: {level} (score={score})")
+                else:
+                    lines.append(f"- {marker}: {detail}")
+            biomarker_panel_section = "\n".join(lines) + "\n\n"
+
+        # ── Treatment specialist proposal ─────────────────────────────────────
+        treatment_proposal_section = ""
+        if treatment_proposal:
+            lines = ["=== TREATMENT SPECIALIST PROPOSAL ==="]
+            for k, v in treatment_proposal.items():
+                lines.append(f"- {k}: {v}")
+            treatment_proposal_section = "\n".join(lines) + "\n\n"
+
         return f"""You are chairing an Autonomous Oncology Board meeting.
 
 === PATHOLOGY REPORT (from AI Pathologist using Prov-GigaPath) ===
@@ -257,7 +280,7 @@ Flags: {', '.join(pathology.flags) if pathology.flags else 'none'}
 === RESEARCH BRIEF (from AI Researcher using RAG + Oncology Literature) ===
 {research_brief}
 
-{biomarker_section}{similar_section}=== YOUR TASK ===
+{biomarker_section}{similar_section}{biomarker_panel_section}{treatment_proposal_section}=== YOUR TASK ===
 As the senior oncologist, synthesise the above into a complete Patient Management Plan.
 You MUST gate any biomarker-linked or targeted therapies behind biomarker status.
 If status is unknown, mark the regimen as PENDING and add the required tests to
@@ -341,14 +364,19 @@ Return only the JSON. No markdown fences."""
         research_summary: ResearchSummary,
         similar_cases: Optional[list[dict]] = None,
         metadata: Optional[dict] = None,
+        biomarker_panel: Optional[dict] = None,
+        treatment_proposal: Optional[dict] = None,
     ) -> ManagementPlan:
         """
         Synthesise the final Patient Management Plan.
 
         Args:
-            pathology_report: Output from PathologistAgent.
-            research_summary: Output from ResearcherAgent.
-            similar_cases:    Optional list of similar past cases from BoardMemory.
+            pathology_report:   Output from PathologistAgent.
+            research_summary:   Output from ResearcherAgent.
+            similar_cases:      Optional list of similar past cases from BoardMemory.
+            metadata:           Optional patient metadata dict.
+            biomarker_panel:    Optional biomarker scores from the molecular panel.
+            treatment_proposal: Optional treatment proposal from the treatment specialist.
 
         Returns:
             ManagementPlan — the final AOB output.
@@ -360,6 +388,8 @@ Return only the JSON. No markdown fences."""
             research_summary,
             similar_cases=similar_cases,
             metadata=metadata,
+            biomarker_panel=biomarker_panel,
+            treatment_proposal=treatment_proposal,
         )
 
         try:
