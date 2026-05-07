@@ -43,6 +43,7 @@ from typing import Optional
 from ml.models.llm_client import OllamaClient
 from ml.rag.retriever import OncologyRetriever, EvidenceBundle
 from ml.agents.pathologist import PathologyReport
+from ml.utils.json_extract import extract_json_object
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class ResearchSummary:
     citations: list[str]
     evidence_quality: str
     raw_evidence: dict
+    from_fallback: bool = False   # True when LLM was unavailable / parse failed
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -266,13 +268,12 @@ Return only the JSON object. No markdown, no explanation."""
                 temperature=0.1,
                 max_tokens=800,
             )
-            # Parse JSON from response
             text = response.text.strip()
-            # Extract JSON if wrapped in anything
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-            return json.loads(text)
+            parsed = extract_json_object(text)
+            if parsed is not None:
+                return parsed
+            log.warning("ResearcherAgent: JSON extraction failed, using rule-based fallback")
+            return self._rule_based_synthesis(evidence)
 
         except Exception as e:
             log.warning(f"ResearcherAgent: LLM synthesis failed ({e}), using fallback")
@@ -301,6 +302,7 @@ Return only the JSON object. No markdown, no explanation."""
             "gated_treatments": self._default_gated_treatments(evidence.tissue_type, [docs[0].title] if docs else []),
             "citations": [d.citation for d in docs if d.citation],
             "evidence_quality": "High" if len(docs) >= 3 else "Moderate",
+            "from_fallback": True,
         }
 
     def _infer_tests(self, tissue_type: str) -> list[str]:
@@ -423,6 +425,7 @@ Return only the JSON object. No markdown, no explanation."""
             citations=synthesis.get("citations", []),
             evidence_quality=synthesis.get("evidence_quality", "Moderate"),
             raw_evidence=evidence.to_dict(),
+            from_fallback=bool(synthesis.get("from_fallback", False)),
         )
 
         log.info(
@@ -518,10 +521,12 @@ Return only the JSON. Be specific and cite the NCCN guideline violated."""
                 max_tokens=500,
             )
             text = response.text.strip()
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            result = json.loads(match.group() if match else text)
-            log.info(f"ResearcherAgent: challenge issued — '{result.get('challenge_text', '')[:80]}'")
-            return result
+            result = extract_json_object(text)
+            if result is not None:
+                log.info(f"ResearcherAgent: challenge issued — '{result.get('challenge_text', '')[:80]}'")
+                return result
+            log.warning("ResearcherAgent: challenge JSON extraction failed, using heuristic")
+            return self._heuristic_challenge(tissue, first_line, investigations)
 
         except Exception as e:
             log.warning(f"ResearcherAgent: challenge LLM failed ({e}), using heuristic")

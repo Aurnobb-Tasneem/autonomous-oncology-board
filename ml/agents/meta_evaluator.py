@@ -24,6 +24,7 @@ import re
 from typing import Optional
 
 from ml.models.llm_client import OllamaClient
+from ml.utils.json_extract import extract_json_object
 
 log = logging.getLogger(__name__)
 
@@ -111,8 +112,10 @@ Return only the JSON. No markdown."""
                 max_tokens=400,
             )
             text = response.text.strip()
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            result = json.loads(match.group() if match else text)
+            result = extract_json_object(text)
+            if result is None:
+                log.warning("MetaEvaluator: JSON extraction failed, using heuristic")
+                return self._heuristic_score(original_first_line, revised_first_line, critique)
             score = int(result.get("consensus_score", 75))
             log.info(f"MetaEvaluator: consensus_score={score}")
             return result
@@ -127,15 +130,44 @@ Return only the JSON. No markdown."""
         revised: str,
         critique: str,
     ) -> dict:
-        """Heuristic fallback: did the plan text actually change?"""
-        changed = original.strip().lower() != revised.strip().lower()
-        score = 80 if changed else 45
+        """
+        Heuristic fallback when the LLM is unavailable.
+
+        Key principle: never declare consensus on a heuristic alone. All scores
+        are capped at 65, which is below CONSENSUS_THRESHOLD (70), so the debate
+        loop continues through MAX_DEBATE_ROUNDS and exits naturally without a
+        false "consensus reached" signal.
+        """
+        orig_l = original.strip().lower()
+        rev_l  = revised.strip().lower()
+
+        if orig_l == rev_l:
+            score  = 30
+            reason = "Plan text unchanged — critique not incorporated."
+        else:
+            # Token-overlap signal: did the revision pull in vocabulary from the critique?
+            crit_tokens = set(re.findall(r"[a-z][a-z\-]{3,}", critique.lower()))
+            orig_tokens = set(re.findall(r"[a-z][a-z\-]{3,}", orig_l))
+            rev_tokens  = set(re.findall(r"[a-z][a-z\-]{3,}", rev_l))
+            new_tokens  = rev_tokens - orig_tokens
+            overlap     = len(crit_tokens & new_tokens)
+
+            if overlap >= 3:
+                score  = 65
+                reason = (
+                    f"Revision added {overlap} terms from the critique "
+                    f"(heuristic — LLM scoring unavailable)."
+                )
+            else:
+                score  = 50
+                reason = "Revision detected but minimal vocabulary overlap with critique."
+
         return {
-            "consensus_score": score,
-            "reasoning": "Plan was revised in response to critique." if changed
-                         else "Plan text unchanged — critique may not have been incorporated.",
-            "addressed_points": ["Plan updated"] if changed else [],
-            "unaddressed_points": [] if changed else ["No changes detected"],
+            "consensus_score":    score,
+            "reasoning":          reason,
+            "addressed_points":   [],
+            "unaddressed_points": ["Heuristic scoring used (LLM unavailable)"],
+            "from_heuristic":     True,
         }
 
     # ── VLM Reconciliation ────────────────────────────────────────────────────
@@ -230,8 +262,10 @@ Return ONLY valid JSON with exactly these fields:
                 max_tokens=500,
             )
             text = response.text.strip()
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            result = json.loads(match.group() if match else text)
+            result = extract_json_object(text)
+            if result is None:
+                log.warning("MetaEvaluator.reconcile: JSON extraction failed, using heuristic")
+                return self._heuristic_reconcile(gigapath_report, vlm_opinion)
 
             score = int(result.get("agreement_score", 75))
             log.info(

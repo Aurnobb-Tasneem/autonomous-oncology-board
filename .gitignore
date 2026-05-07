@@ -74,6 +74,9 @@ ml/data/qdrant/
 **/qdrant_storage/
 **/qdrant_local/
 
+# Job persistence — runtime artifacts, not for version control
+data/jobs/
+
 # Pre-computed embeddings / prototypes
 ml/models/prototypes/
 

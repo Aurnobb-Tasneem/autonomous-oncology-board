@@ -139,6 +139,22 @@ export interface BoardResult {
   similar_cases?: SimilarCase[];
   total_time_s?: number;
   error?: string;
+  /** True when one or more LoRA specialists fell back to built-in heuristics. */
+  degraded_mode?: boolean;
+  /** Names of specialists that were unavailable: "tnm" | "biomarker" | "treatment" */
+  unavailable_specialists?: string[];
+  /** Core agents that fell back to rule-based heuristics (LLM unavailable / parse failed). */
+  fallback_agents?: string[];
+}
+
+export interface SpecialistsHealth {
+  status: "ok" | "degraded" | "unreachable";
+  endpoint: string;
+  tnm: boolean;
+  biomarker: boolean;
+  treatment: boolean;
+  models?: string[];
+  error?: string;
 }
 
 export interface SimilarCase {
@@ -176,8 +192,13 @@ export interface SseStep {
 
 // ── API Functions ──────────────────────────────────────────────────────────
 
-export async function getHealth(): Promise<{ status: string; ollama: string }> {
+export async function getHealth(): Promise<{ status: string; ollama: string; specialists_status?: string }> {
   const res = await fetch(`${BASE}/health`, { cache: "no-store" });
+  return res.json();
+}
+
+export async function getSpecialistsHealth(): Promise<SpecialistsHealth> {
+  const res = await fetch(`${BASE}/health/specialists`, { cache: "no-store" });
   return res.json();
 }
 

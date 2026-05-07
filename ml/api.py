@@ -13,7 +13,7 @@ Endpoints:
 Usage (run inside Docker container on port 8000):
   cd /workspace/aob
   export PYTHONPATH=/workspace/aob
-  export OLLAMA_HOST=http://172.17.0.1:11434
+  export OLLAMA_HOST=http://<docker-gateway>:11434   # bootstrap.sh auto-detects this
   export HF_TOKEN=hf_...
   uvicorn ml.api:app --host 0.0.0.0 --port 8000 --reload
 """
@@ -93,9 +93,66 @@ class Job:
         return step
 
 
-# ── In-memory job store (replace with Redis for production) ──────────────────
+# ── Job store: in-memory hot cache + JSONL disk persistence ─────────────────
+# Jobs are kept in RAM for fast access and written atomically to data/jobs/
+# on every status transition. On startup _load_jobs_from_disk() rehydrates
+# the cache, so completed reports survive API restarts and redeployments.
 _jobs: dict[str, Job] = {}
 _board: Optional[AutonomousOncologyBoard] = None
+
+# ── Job persistence helpers ──────────────────────────────────────────────────
+_JOBS_DIR = Path(os.getenv("JOBS_DIR", "data/jobs"))
+
+
+def _job_path(job_id: str) -> Path:
+    return _JOBS_DIR / f"{job_id}.json"
+
+
+def _save_job(job: Job) -> None:
+    """Atomically write job state to disk. Safe to call from background threads."""
+    try:
+        _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "job_id":     job.job_id,
+            "case_id":    job.case_id,
+            "status":     job.status.value,
+            "steps":      [s.model_dump() for s in job.steps],
+            "result":     job.result.to_dict() if job.result else None,
+            "error":      job.error,
+            "created_at": job.created_at,
+        }
+        tmp = _job_path(job.job_id).with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, default=str))
+        tmp.replace(_job_path(job.job_id))
+    except Exception as e:
+        log.warning(f"_save_job: could not persist {job.job_id}: {e}")
+
+
+def _load_jobs_from_disk() -> None:
+    """Rehydrate the in-memory _jobs cache from disk at startup."""
+    if not _JOBS_DIR.exists():
+        return
+    loaded = 0
+    for path in _JOBS_DIR.glob("*.json"):
+        try:
+            data = json.loads(path.read_text())
+            job  = Job(job_id=data["job_id"], case_id=data["case_id"])
+            job.status     = JobStatus(data["status"])
+            # Jobs that were RUNNING when the API died are now stale — mark FAILED.
+            if job.status == JobStatus.RUNNING:
+                job.status = JobStatus.FAILED
+                job.error  = "API restarted while job was running"
+            job.steps      = [AgentStep(**s) for s in data.get("steps", [])]
+            job.error      = data.get("error")
+            job.created_at = data.get("created_at", job.created_at)
+            if data.get("result"):
+                job.result = BoardResult.from_dict(data["result"])
+            _jobs[job.job_id] = job
+            loaded += 1
+        except Exception as e:
+            log.warning(f"_load_jobs_from_disk: could not rehydrate {path.name}: {e}")
+    if loaded:
+        log.info(f"Job persistence: rehydrated {loaded} job(s) from {_JOBS_DIR}")
 
 # ── VRAM timeseries ring buffer (polled every 2s by background thread) ────────
 _VRAM_RING_SIZE = 300   # 300 × 2s = 10 minutes rolling window
@@ -150,9 +207,13 @@ def _vram_monitor_loop():
 async def lifespan(app: FastAPI):
     global _board
     log.info("AOB API: starting up...")
+
+    # Rehydrate completed jobs from disk before accepting new requests.
+    _load_jobs_from_disk()
+
     _board = AutonomousOncologyBoard(
         hf_token=os.getenv("HF_TOKEN", ""),
-        ollama_host=os.getenv("OLLAMA_HOST", "http://172.17.0.1:11434"),
+        ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.3:70b"),
     )
     log.info("AOB API: board initialised — ready to accept cases")
@@ -237,6 +298,7 @@ def _run_board_job(job: Job, images_bytes: list[bytes], metadata: dict):
     try:
         job.status = JobStatus.RUNNING
         job.add_step("system", "Case received — starting AOB pipeline", 5)
+        _save_job(job)   # persist: RUNNING
 
         # Decode images
         job.add_step("system", f"Decoding {len(images_bytes)} image patches", 8)
@@ -257,29 +319,79 @@ def _run_board_job(job: Job, images_bytes: list[bytes], metadata: dict):
 
         job.result = result
         job.status = JobStatus.DONE
+        _save_job(job)   # persist: DONE + full result
 
     except Exception as e:
         log.exception(f"Job {job.job_id} failed: {e}")
         job.status = JobStatus.FAILED
         job.error  = str(e)
         job.add_step("system", f"❌ Pipeline failed: {e}", -1)
+        _save_job(job)   # persist: FAILED
 
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
+def _probe_specialists() -> dict:
+    """
+    Probe the vLLM specialist server's /v1/models endpoint and report which
+    LoRA adapters are loaded. Returns a dict safe to embed in /health.
+    """
+    import urllib.request as _urlreq
+    base = os.getenv("TNM_VLLM_BASE_URL", "http://localhost:8006/v1").rstrip("/v1").rstrip("/")
+    models_url = f"{base}/v1/models"
+    try:
+        with _urlreq.urlopen(models_url, timeout=3) as r:
+            data   = json.loads(r.read())
+            models = [m.get("id", "") for m in data.get("data", [])]
+        tnm_ok       = "tnm_specialist"       in models
+        biomarker_ok = "biomarker_specialist" in models
+        treatment_ok = "treatment_specialist" in models
+        all_ok = tnm_ok and biomarker_ok and treatment_ok
+        return {
+            "status":    "ok" if all_ok else "degraded",
+            "endpoint":  base,
+            "tnm":       tnm_ok,
+            "biomarker": biomarker_ok,
+            "treatment": treatment_ok,
+            "models":    models,
+        }
+    except Exception as e:
+        return {
+            "status":    "unreachable",
+            "endpoint":  base,
+            "error":     str(e),
+            "tnm":       False,
+            "biomarker": False,
+            "treatment": False,
+        }
+
+
 @app.get("/health")
 async def health():
-    """Check API, Ollama, and GigaPath status."""
-    llm_ok = OllamaClient().ping()
+    """Check API, Ollama, GigaPath, and specialist adapter status."""
+    llm_ok      = OllamaClient().ping()
+    spec_status = _probe_specialists()
     return {
-        "status": "ok",
-        "ollama": "connected" if llm_ok else "unreachable",
-        "model": os.getenv("OLLAMA_MODEL", "llama3.3:70b"),
-        "board_ready": _board is not None,
-        "active_jobs": len([j for j in _jobs.values() if j.status == JobStatus.RUNNING]),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status":             "ok",
+        "ollama":             "connected" if llm_ok else "unreachable",
+        "model":              os.getenv("OLLAMA_MODEL", "llama3.3:70b"),
+        "board_ready":        _board is not None,
+        "active_jobs":        len([j for j in _jobs.values() if j.status == JobStatus.RUNNING]),
+        "specialists_status": spec_status["status"],
+        "timestamp":          datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/health/specialists")
+async def health_specialists():
+    """
+    Probe the vLLM specialist server and report which LoRA adapters are loaded.
+
+    Returns per-adapter availability so CI monitors and the VRAM dashboard can
+    show a live 'DEGRADED MODE' banner if any specialist is unavailable.
+    """
+    return _probe_specialists()
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
@@ -995,6 +1107,52 @@ async def benchmark_latest():
         return JSONResponse(data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not parse benchmark results: {e}")
+
+
+@app.get("/api/benchmark/ablation")
+async def benchmark_ablation():
+    """
+    Return the latest ablation study results.
+
+    The frontend (frontend/lib/eval-data.ts) calls this first, then falls back
+    to the static JSON in /public/eval-results/ablation.json if no live
+    results are available, then to hardcoded constants. Returning a friendly
+    "no_results_yet" payload here lets the frontend fall through cleanly
+    without surfacing a console error.
+    """
+    results_dir = Path(__file__).parent.parent / "eval" / "results"
+    files = sorted(results_dir.glob("ablation_*.json")) if results_dir.exists() else []
+    if not files:
+        return JSONResponse({"status": "no_results_yet", "hint": "Run: python -m eval.ablation"})
+
+    latest = files[-1]
+    try:
+        with open(latest) as f:
+            return JSONResponse(json.load(f))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not parse ablation results: {e}")
+
+
+@app.get("/api/benchmark/calibration")
+async def benchmark_calibration():
+    """
+    Return the latest calibration / reliability curve results.
+
+    Mirrors /api/benchmark/ablation: graceful empty payload when no results
+    have been generated yet. The frontend then falls back to the bundled
+    static JSON shipped under /public/eval-results/calibration.json.
+    """
+    results_dir = Path(__file__).parent.parent / "eval" / "results"
+    files = sorted(results_dir.glob("calibration_*.json")) if results_dir.exists() else []
+    if not files:
+        return JSONResponse({"status": "no_results_yet", "hint": "Run: python -m eval.calibration"})
+
+    latest = files[-1]
+    try:
+        with open(latest) as f:
+            return JSONResponse(json.load(f))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not parse calibration results: {e}")
 
 
 @app.post("/api/counterfactual/{job_id}")

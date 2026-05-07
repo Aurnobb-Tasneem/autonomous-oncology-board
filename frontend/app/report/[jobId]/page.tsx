@@ -119,6 +119,39 @@ export default function ReportPage() {
             </div>
           </div>
 
+          {/* Degraded mode banner — shown when any specialist or core agent fell back */}
+          {result.degraded_mode && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "0.75rem 1.25rem",
+                background: "rgba(234,179,8,0.10)",
+                border: "1px solid rgba(234,179,8,0.35)",
+                borderRadius: "0.5rem",
+                fontSize: "0.82rem",
+                color: "#b45309",
+              }}
+            >
+              <strong>⚠ DEGRADED MODE</strong>
+              {(result.unavailable_specialists ?? []).length > 0 && (
+                <span>
+                  {" "}— Specialist LoRA adapters unavailable:{" "}
+                  <strong>{(result.unavailable_specialists ?? []).join(", ")}</strong>.
+                  {" "}Staging, biomarker, and treatment recommendations were inferred by Llama 3.3 70B without fine-tuned specialist input.
+                  {" "}Check <code>/health/specialists</code> to verify the vLLM server is running.
+                </span>
+              )}
+              {(result.fallback_agents ?? []).length > 0 && (
+                <span style={{ display: "block", marginTop: "0.35rem" }}>
+                  The following core agents fell back to <strong>rule-based heuristics</strong> (LLM unavailable or JSON parse failed):{" "}
+                  <strong>{(result.fallback_agents ?? []).join(", ")}</strong>.
+                  {" "}Output may be less clinically specific than a full LLM synthesis.
+                  {" "}Check that Ollama is running (<code>ollama ps</code>) and Llama 3.3 70B is loaded.
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Debate summary banner */}
           {debates.length > 0 && (
             <div

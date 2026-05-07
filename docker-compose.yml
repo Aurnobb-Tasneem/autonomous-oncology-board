@@ -1,15 +1,20 @@
-version: "3.9"
-
 # =============================================================================
 # AOB Local Development — docker-compose.yml
 # =============================================================================
-# NOTE: The ML layer (PyTorch + ROCm + vLLM) CANNOT run in Docker on a
-# standard developer machine. It requires the AMD MI300X ROCm host.
-# This compose file is for local development of the API gateway and frontend.
+# NOTE: The ML layer (PyTorch + ROCm + vLLM + Ollama + GigaPath + Qwen-VL +
+# Llama 3.3 70B) CANNOT run in Docker on a standard developer machine. It
+# requires the AMD MI300X ROCm host. This compose file is for local
+# development of the Next.js frontend against a remote FastAPI backend, plus
+# an optional Qdrant instance for RAG development.
+#
+# The project went FastAPI-direct on Day 4 — there is NO NestJS gateway.
 #
 # Usage:
-#   docker compose up              # Start NestJS gateway + frontend dev server
+#   docker compose up              # Start Qdrant + Next.js frontend dev server
+#                                  # (FastAPI ML API runs on the AMD MI300X host, not in Compose)
 #   docker compose up qdrant       # Start Qdrant only (for RAG dev)
+#   docker compose --profile amd up vllm-tnm vllm-biomarker vllm-treatment
+#                                  # AMD MI300X host only — start LoRA specialists
 # =============================================================================
 
 services:
@@ -35,60 +40,42 @@ services:
       retries: 3
 
   # ---------------------------------------------------------------------------
-  # NestJS API Gateway
+  # Next.js Frontend (talks directly to FastAPI on the AMD MI300X host)
   # ---------------------------------------------------------------------------
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
-    container_name: aob-backend
-    ports:
-      - "3001:3001"
-    environment:
-      NODE_ENV: development
-      ML_API_URL: ${ML_API_URL:-http://host.docker.internal:8000}  # FastAPI on ROCm host
-      PORT: 3001
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-    depends_on:
-      qdrant:
-        condition: service_healthy
-    command: npm run start:dev
-
-  # ---------------------------------------------------------------------------
-  # Next.js Frontend
+  # Uses the official node:20 image directly — no Dockerfile needed. The
+  # working directory is bind-mounted from ./frontend, and `npm run dev`
+  # starts the Next.js dev server with hot reload.
   # ---------------------------------------------------------------------------
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
+    image: node:20-alpine
     container_name: aob-frontend
+    working_dir: /app
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: development
-      NEXT_PUBLIC_API_URL: http://localhost:3001
-      BACKEND_INTERNAL_URL: http://backend:3001
+      # Public URL the browser uses to reach FastAPI (override per-host as needed).
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
+      # Server-side URL used by Next.js rewrites in next.config.ts.
+      # On the MI300X host both FastAPI and the frontend are colocated, so
+      # host.docker.internal:8000 reaches the FastAPI process.
+      BACKEND_INTERNAL_URL: "${BACKEND_INTERNAL_URL:-http://host.docker.internal:8000}"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    depends_on:
-      - backend
-    command: npm run dev
+      - frontend_node_modules:/app/node_modules
+      - frontend_next_cache:/app/.next
+    command: sh -c "npm install --prefer-offline --no-audit --no-fund && npm run dev"
 
   # ---------------------------------------------------------------------------
-  # vLLM — TNM Specialist (Track 2: Fine-Tuned LoRA adapter)
+  # vLLM — TNM Specialist (LoRA adapter on Llama-3.1-8B)
   # ---------------------------------------------------------------------------
   # NOTE: This service REQUIRES the AMD MI300X ROCm host.
-  # It must be run with: docker compose --profile amd up vllm-tnm
+  # Run with:  docker compose --profile amd up vllm-tnm
   # (excluded from default `docker compose up` to prevent failures on
-  # non-AMD developer machines)
+  #  non-AMD developer machines).
   #
-  # The LoRA adapter must be trained first:
+  # Adapter must be trained first:
   #   python scripts/finetune_tnm.py
-  #   bash scripts/serve_tnm_adapter.sh
   # ---------------------------------------------------------------------------
   vllm-tnm:
     image: vllm/vllm-openai:latest          # use the ROCm build on MI300X
@@ -106,7 +93,71 @@ services:
       --enable-lora
       --lora-modules tnm_specialist=/adapter
       --port 8006
-      --gpu-memory-utilization 0.15
+      --gpu-memory-utilization 0.05
+      --max-model-len 2048
+      --dtype bfloat16
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - video
+    security_opt:
+      - seccomp:unconfined
+
+  # ---------------------------------------------------------------------------
+  # vLLM — Biomarker Specialist (LoRA adapter on Llama-3.1-8B)
+  # ---------------------------------------------------------------------------
+  # AMD MI300X host only. Adapter trained via scripts/finetune_biomarker.py.
+  # ---------------------------------------------------------------------------
+  vllm-biomarker:
+    image: vllm/vllm-openai:latest
+    container_name: aob-vllm-biomarker
+    profiles: ["amd"]
+    ports:
+      - "8007:8007"
+    volumes:
+      - ./ml/models/checkpoints/biomarker_lora:/adapter:ro
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+    command: >
+      --model meta-llama/Llama-3.1-8B-Instruct
+      --enable-lora
+      --lora-modules biomarker_specialist=/adapter
+      --port 8007
+      --gpu-memory-utilization 0.05
+      --max-model-len 2048
+      --dtype bfloat16
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - video
+    security_opt:
+      - seccomp:unconfined
+
+  # ---------------------------------------------------------------------------
+  # vLLM — Treatment Specialist (LoRA adapter on Llama-3.1-8B)
+  # ---------------------------------------------------------------------------
+  # AMD MI300X host only. Adapter trained via scripts/finetune_treatment.py.
+  # ---------------------------------------------------------------------------
+  vllm-treatment:
+    image: vllm/vllm-openai:latest
+    container_name: aob-vllm-treatment
+    profiles: ["amd"]
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./ml/models/checkpoints/treatment_lora:/adapter:ro
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+    command: >
+      --model meta-llama/Llama-3.1-8B-Instruct
+      --enable-lora
+      --lora-modules treatment_specialist=/adapter
+      --port 8008
+      --gpu-memory-utilization 0.05
       --max-model-len 2048
       --dtype bfloat16
     devices:
@@ -120,3 +171,5 @@ services:
 volumes:
   qdrant_data:
   huggingface_cache:
+  frontend_node_modules:
+  frontend_next_cache:

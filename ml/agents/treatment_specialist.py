@@ -32,6 +32,8 @@ from typing import Optional
 
 import httpx
 
+from ml.utils.json_extract import extract_json_object
+
 PROMPT_TEMPLATE = """\
 <|begin_of_text|><|start_header_id|>system<|end_header_id|>
 You are a board-certified oncologist and NCCN guideline expert.
@@ -227,19 +229,7 @@ class TreatmentSpecialistAgent:
         return result
 
     def _parse(self, raw_text: str, latency_ms: float) -> TreatmentProposal:
-        parsed = None
-        try:
-            parsed = json.loads(raw_text)
-        except json.JSONDecodeError:
-            pass
-
-        if parsed is None:
-            m = re.search(r"\{.*\}", raw_text, re.DOTALL)
-            if m:
-                try:
-                    parsed = json.loads(m.group(0))
-                except json.JSONDecodeError:
-                    pass
+        parsed = extract_json_object(raw_text)
 
         if parsed is None:
             return TreatmentProposal(

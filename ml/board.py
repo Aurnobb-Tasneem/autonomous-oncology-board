@@ -94,8 +94,62 @@ class BoardResult:
     patient_summary: Optional[str] = None
     trial_matches: list = field(default_factory=list)
     counterfactual: Optional[CounterfactualPlan] = None
+    # Degraded-mode tracking — populated when LoRA specialists fall back
+    unavailable_specialists: list[str] = field(default_factory=list)
+    # LLM fallback tracking — populated when core agents (researcher / oncologist)
+    # fell back to rule-based heuristics because the LLM was unavailable or
+    # JSON parsing failed.
+    fallback_agents: list[str] = field(default_factory=list)
+
+    @property
+    def degraded_mode(self) -> bool:
+        """True if any specialist OR core agent fell back to a rule-based heuristic."""
+        return len(self.unavailable_specialists) > 0 or len(self.fallback_agents) > 0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "BoardResult":
+        """
+        Reconstruct a minimal BoardResult from a persisted to_dict() payload.
+
+        This is used exclusively by the job-persistence layer to rehydrate
+        completed jobs from disk on API restart. The rehydrated instance only
+        needs to pass through to_dict() again (for the /report endpoint) — it
+        does not need live agent objects. We therefore store the raw dict and
+        delegate to_dict() back to it, avoiding complex deserialization chains.
+        """
+        instance = cls.__new__(cls)
+        # Store the raw serialized payload so to_dict() can return it intact.
+        instance._raw_dict = data
+        # Populate the few fields that api.py checks directly (status, case_id).
+        instance.case_id          = data.get("case_id", "")
+        instance.total_time_s     = data.get("total_time_s", 0.0)
+        instance.debate_enabled   = data.get("debate_enabled", False)
+        instance.debate_rounds    = []
+        instance.heatmaps_b64     = []
+        instance.vlm_opinion      = None
+        instance.vlm_reconciliation = None
+        instance.pathology_feedback = None
+        instance.biomarker_panel  = None
+        instance.treatment_proposal = None
+        instance.differential_dx  = None
+        instance.patient_summary          = data.get("patient_summary")
+        instance.trial_matches            = data.get("trial_matches", [])
+        instance.counterfactual           = None
+        instance.unavailable_specialists  = data.get("unavailable_specialists", [])
+        instance.fallback_agents          = data.get("fallback_agents", [])
+        # Stub required dataclass fields so attribute access doesn't crash.
+        instance.pathology_report = type("_Stub", (), {"to_dict": lambda s: data.get("pathology_report", {})})()
+        instance.research_summary = type("_Stub", (), {"to_dict": lambda s: data.get("research_summary", {})})()
+        instance.management_plan  = type("_Stub", (), {
+            "to_dict": lambda s: data.get("management_plan", {}),
+            "format_report": lambda s: data.get("management_plan", {}).get("raw_text", ""),
+        })()
+        return instance
 
     def to_dict(self) -> dict:
+        # If this instance was rehydrated from disk, return the stored payload directly.
+        if hasattr(self, "_raw_dict"):
+            return self._raw_dict
         d = {
             "case_id": self.case_id,
             "total_time_s": self.total_time_s,
@@ -106,6 +160,9 @@ class BoardResult:
             "pathology_report": self.pathology_report.to_dict(),
             "research_summary": self.research_summary.to_dict(),
             "management_plan": self.management_plan.to_dict(),
+            "degraded_mode": self.degraded_mode,
+            "unavailable_specialists": self.unavailable_specialists,
+            "fallback_agents": self.fallback_agents,
         }
         if self.debate_rounds:
             d["debate_summary"] = [
@@ -237,6 +294,8 @@ class AutonomousOncologyBoard:
 
         t0 = time.perf_counter()
         _emit("system", f"AOB: starting case '{case_id}' — {len(images)} patches", 2)
+        _unavailable_specialists: list[str] = []  # accumulates fallback specialist names
+        _fallback_agents: list[str] = []          # accumulates core-agent LLM fallbacks
 
         # ── Agent 1: Pathologist ─────────────────────────────────────────────
         _emit("pathologist", "GigaPath: loading model and preprocessing patches", 8)
@@ -339,6 +398,9 @@ class AutonomousOncologyBoard:
             52,
         )
         _emit("researcher", f"Synthesised {len(research.treatment_options)} treatment options", 56)
+        if research.from_fallback:
+            _fallback_agents.append("researcher")
+            _emit("system", "⚠️ WARNING: Researcher LLM unavailable — using rule-based synthesis", 56)
 
         # ── Agent 2b: TNM Staging Specialist (Llama-3.1-8B LoRA) ─────────────
         # Calls the fine-tuned LoRA adapter via vLLM at :8006.
@@ -350,6 +412,7 @@ class AutonomousOncologyBoard:
                 pathology_text=pathology.summary or pathology.tissue_type,
             )
             if tnm_result.is_fallback:
+                _unavailable_specialists.append("tnm")
                 _emit(
                     "tnm_specialist",
                     f"TNM specialist unavailable ({tnm_result.error}) — Oncologist will infer staging",
@@ -368,6 +431,7 @@ class AutonomousOncologyBoard:
                     59,
                 )
         except Exception as tnm_err:
+            _unavailable_specialists.append("tnm")
             log.warning(f"Board: TNM specialist error ({tnm_err}) — continuing without staging")
             _emit("tnm_specialist", f"TNM specialist skipped: {tnm_err}", 58)
 
@@ -382,12 +446,14 @@ class AutonomousOncologyBoard:
             _emit("biomarker_specialist", "Biomarker specialist: extracting molecular testing panel...", 59)
             biomarker_panel = self.biomarker_specialist.extract(tissue_stage_text)
             if biomarker_panel.is_fallback:
+                _unavailable_specialists.append("biomarker")
                 _emit("biomarker_specialist", f"Biomarker specialist unavailable ({biomarker_panel.error}) — Oncologist will infer", 60)
             else:
                 _emit("biomarker_specialist", f"{biomarker_panel.summary()} (confidence: {biomarker_panel.confidence})", 60)
                 for t in biomarker_panel.tests_required[:3]:
                     _emit("biomarker_specialist", f"  Test required: {t}", 60)
         except Exception as e:
+            _unavailable_specialists.append("biomarker")
             log.warning(f"Board: biomarker specialist error ({e}) — continuing")
             _emit("biomarker_specialist", f"Biomarker specialist skipped: {e}", 60)
 
@@ -423,10 +489,12 @@ class AutonomousOncologyBoard:
                 metadata=metadata,
             )
             if treatment_proposal.is_fallback:
+                _unavailable_specialists.append("treatment")
                 _emit("treatment_specialist", f"Treatment specialist unavailable ({treatment_proposal.error})", 64)
             else:
                 _emit("treatment_specialist", f"NCCN Category {treatment_proposal.nccn_category}: {treatment_proposal.first_line[:80]}...", 64)
         except Exception as e:
+            _unavailable_specialists.append("treatment")
             log.warning(f"Board: treatment specialist error ({e}) — continuing")
             _emit("treatment_specialist", f"Treatment specialist skipped: {e}", 64)
 
@@ -446,6 +514,9 @@ class AutonomousOncologyBoard:
             f"(confidence: {plan.confidence_score:.0%})",
             72,
         )
+        if plan.from_fallback:
+            _fallback_agents.append("oncologist")
+            _emit("system", "⚠️ WARNING: Oncologist LLM unavailable — using rule-based plan", 72)
 
         # ── Cross-Agent Feedback Loop (Task 3) ───────────────────────────────
         # If the Oncologist's initial confidence is below the threshold, it
@@ -513,6 +584,9 @@ class AutonomousOncologyBoard:
                 emit=_emit,
                 vlm_reconciliation=vlm_reconciliation,
             )
+            if plan.from_fallback and "oncologist" not in _fallback_agents:
+                _fallback_agents.append("oncologist")
+                _emit("system", "⚠️ WARNING: Oncologist LLM unavailable during debate revision — using rule-based plan", 84)
 
         # ── Patient Summary (plain-language) ─────────────────────────────
         patient_summary_text: Optional[str] = None
@@ -575,7 +649,20 @@ class AutonomousOncologyBoard:
             differential_dx=differential_result,
             patient_summary=patient_summary_text,
             trial_matches=trial_matches,
+            unavailable_specialists=_unavailable_specialists,
+            fallback_agents=_fallback_agents,
         )
+
+        if _unavailable_specialists or _fallback_agents:
+            parts = []
+            if _unavailable_specialists:
+                parts.append(f"unavailable specialists: {', '.join(_unavailable_specialists)}")
+            if _fallback_agents:
+                parts.append(f"LLM fallback agents: {', '.join(_fallback_agents)}")
+            log.warning(
+                f"Board: case '{case_id}' completed in DEGRADED MODE — "
+                + " | ".join(parts)
+            )
 
         # ── Board Memory: save this case for future similar-case retrieval ───
         try:
@@ -732,6 +819,12 @@ class AutonomousOncologyBoard:
             addressed        = meta_result.get("addressed_points", [])
             unaddressed      = meta_result.get("unaddressed_points", [])
 
+            if meta_result.get("from_heuristic"):
+                emit(
+                    "system",
+                    "⚠️ WARNING: Consensus scored by heuristic (LLM unavailable) — debate will continue",
+                    87,
+                )
             emit(
                 "system",
                 f"Consensus score: {consensus_score}/100 — {meta_reasoning[:80]}",

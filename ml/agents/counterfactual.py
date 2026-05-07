@@ -21,13 +21,12 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 from ml.models.llm_client import OllamaClient
+from ml.utils.json_extract import extract_json_object
 
 log = logging.getLogger(__name__)
 
@@ -167,16 +166,7 @@ class CounterfactualAgent:
         return _fallback_counterfactual(original_plan, edits)
 
     def _parse(self, raw: str, edits: dict) -> Optional[CounterfactualPlan]:
-        parsed = None
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            m = re.search(r"\{.*\}", raw, re.DOTALL)
-            if m:
-                try:
-                    parsed = json.loads(m.group(0))
-                except json.JSONDecodeError:
-                    pass
+        parsed = extract_json_object(raw)
 
         if parsed is None:
             return None

@@ -26,7 +26,7 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 # ── Defaults ────────────────────────────────────────────────────────────────
-DEFAULT_HOST  = os.getenv("OLLAMA_HOST", "http://172.17.0.1:11434")
+DEFAULT_HOST  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.3:70b")
 
 

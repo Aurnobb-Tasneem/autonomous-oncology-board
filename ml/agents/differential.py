@@ -21,14 +21,13 @@ Output schema:
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 from ml.models.llm_client import OllamaClient
 from ml.agents.pathologist import PathologyReport
+from ml.utils.json_extract import extract_json_object
 
 log = logging.getLogger(__name__)
 
@@ -215,16 +214,7 @@ class DifferentialDxAgent:
 
     def _parse_llm_response(self, raw: str) -> Optional[DifferentialResult]:
         """Parse LLM JSON output into DifferentialResult."""
-        parsed = None
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            m = re.search(r"\{.*\}", raw, re.DOTALL)
-            if m:
-                try:
-                    parsed = json.loads(m.group(0))
-                except json.JSONDecodeError:
-                    pass
+        parsed = extract_json_object(raw)
 
         if parsed is None or "differentials" not in parsed:
             return None

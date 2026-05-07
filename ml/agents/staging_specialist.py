@@ -58,6 +58,8 @@ from typing import Optional
 
 import httpx
 
+from ml.utils.json_extract import extract_json_object
+
 # Prompt template — MUST match PROMPT_TEMPLATE in scripts/finetune_tnm.py exactly.
 # The LoRA adapter was trained on this format; any deviation will degrade output.
 # If you change the template here, retrain the adapter.
@@ -317,14 +319,9 @@ class StagingSpecialistAgent:
         except json.JSONDecodeError:
             pass
 
-        # Strategy 2: extract first JSON object
+        # Strategy 2: extract first JSON object (robust balanced-brace extractor)
         if parsed is None:
-            m = re.search(r"\{[^{}]*\}", raw_text, re.DOTALL)
-            if m:
-                try:
-                    parsed = json.loads(m.group(0))
-                except json.JSONDecodeError:
-                    pass
+            parsed = extract_json_object(raw_text)
 
         if parsed is None:
             log.warning(

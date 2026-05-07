@@ -39,29 +39,82 @@ else
   echo "    OK — now at $(git rev-parse --short HEAD)"
 fi
 
-# ── 2. Sync into Docker container ─────────────────────────────────────────
-echo "--> Syncing code into container..."
+# ── 2. Sync ML code into Docker container ─────────────────────────────────
+echo "--> Syncing ML code into container..."
 docker cp "$REPO_DIR/ml"      "$CONTAINER":/workspace/aob/
 docker cp "$REPO_DIR/scripts" "$CONTAINER":/workspace/aob/
 docker cp "$REPO_DIR/data"    "$CONTAINER":/workspace/aob/
+# eval/ holds reproducible benchmark results consumed by /api/benchmark/* endpoints
+[ -d "$REPO_DIR/eval" ] && docker cp "$REPO_DIR/eval" "$CONTAINER":/workspace/aob/ || true
 echo "    OK"
+
+# ── 2b. Rebuild & restart Next.js frontend on the HOST ────────────────────
+# The frontend runs on the host (not in the ROCm container). On every deploy
+# we install deps, rebuild, and restart `next start` on :3000.
+if [ -d "$REPO_DIR/frontend" ]; then
+  echo "--> Rebuilding Next.js frontend..."
+  cd "$REPO_DIR/frontend"
+  if [ ! -f ".env.local" ]; then
+    {
+      echo "NEXT_PUBLIC_API_URL=http://localhost:8000"
+      echo "BACKEND_INTERNAL_URL=http://localhost:8000"
+    } > .env.local
+  fi
+  npm ci --prefer-offline --no-audit --no-fund --silent
+  npm run build
+  echo "    OK"
+
+  echo "--> Restarting Next.js server on :3000..."
+  pkill -f "next-server" 2>/dev/null || true
+  pkill -f "next start" 2>/dev/null || true
+  sleep 1
+  nohup npx next start -p 3000 > /var/log/aob_frontend.log 2>&1 &
+  sleep 3
+  cd "$REPO_DIR"
+  echo "    OK"
+fi
 
 # ── 3. Restart FastAPI ─────────────────────────────────────────────────────
 echo "--> Restarting FastAPI server..."
 docker exec "$CONTAINER" pkill -f uvicorn 2>/dev/null || true
 sleep 2
 
-# Read HF_TOKEN from .env if present (host side — passed into container below)
+# Read all env vars from .env if present (host side).
+# OLLAMA_HOST is written here by bootstrap.sh after auto-detecting the Docker
+# bridge gateway — so we never need to hardcode 172.17.0.1 again.
 HF_TOKEN=""
+OLLAMA_HOST=""
+QWEN_VL_MODEL=""
+TNM_VLLM_BASE_URL=""
+BIOMARKER_VLLM_BASE_URL=""
+TREATMENT_VLLM_BASE_URL=""
 if [ -f "$REPO_DIR/.env" ]; then
   HF_TOKEN=$(grep -E '^HF_TOKEN=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+  OLLAMA_HOST=$(grep -E '^OLLAMA_HOST=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+  QWEN_VL_MODEL=$(grep -E '^QWEN_VL_MODEL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+  TNM_VLLM_BASE_URL=$(grep -E '^TNM_VLLM_BASE_URL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+  BIOMARKER_VLLM_BASE_URL=$(grep -E '^BIOMARKER_VLLM_BASE_URL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+  TREATMENT_VLLM_BASE_URL=$(grep -E '^TREATMENT_VLLM_BASE_URL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
 fi
+
+# If OLLAMA_HOST wasn't persisted by bootstrap yet, re-detect the gateway now.
+if [ -z "$OLLAMA_HOST" ]; then
+  DOCKER_GW=$(docker exec "$CONTAINER" sh -c \
+    "ip route 2>/dev/null | awk '/default/ {print \$3; exit}'" 2>/dev/null || echo "172.17.0.1")
+  OLLAMA_HOST="http://${DOCKER_GW}:11434"
+  echo "    OLLAMA_HOST not in .env — detected as ${OLLAMA_HOST}"
+fi
+echo "--> OLLAMA_HOST: ${OLLAMA_HOST}"
 
 docker exec -d "$CONTAINER" bash -c "
   cd /workspace/aob &&
   export PYTHONPATH=/workspace/aob &&
-  export OLLAMA_HOST=http://172.17.0.1:11434 &&
+  export OLLAMA_HOST='${OLLAMA_HOST}' &&
   export HF_TOKEN='${HF_TOKEN}' &&
+  export QWEN_VL_MODEL='${QWEN_VL_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}' &&
+  export TNM_VLLM_BASE_URL='${TNM_VLLM_BASE_URL:-http://localhost:8006/v1}' &&
+  export BIOMARKER_VLLM_BASE_URL='${BIOMARKER_VLLM_BASE_URL:-http://localhost:8006/v1}' &&
+  export TREATMENT_VLLM_BASE_URL='${TREATMENT_VLLM_BASE_URL:-http://localhost:8006/v1}' &&
   uvicorn ml.api:app --host 0.0.0.0 --port 8000 > /var/log/aob_api.log 2>&1
 "
 
@@ -80,6 +133,11 @@ done
 # ── 5. Report result + dump logs on failure ────────────────────────────────
 if [ "$HEALTHY" -eq 1 ]; then
   echo "    OK — API is live at http://localhost:8000"
+  if curl -fsS --max-time 2 http://localhost:3000 > /dev/null 2>&1; then
+    echo "    OK — Frontend is live at http://localhost:3000"
+  else
+    echo "    WARNING: Frontend health check failed — tail -50 /var/log/aob_frontend.log"
+  fi
 else
   echo ""
   echo "==> HEALTH CHECK FAILED after $((HEALTH_RETRIES * HEALTH_INTERVAL))s. Dumping diagnostics..."
@@ -95,6 +153,10 @@ else
   echo ""
   echo "--- /var/log/aob_api.log (last 100 lines) ---"
   docker exec "$CONTAINER" sh -c 'tail -100 /var/log/aob_api.log 2>/dev/null || echo "(log file not found)"' || true
+
+  echo ""
+  echo "--- /var/log/aob_frontend.log (last 50 lines, host) ---"
+  tail -50 /var/log/aob_frontend.log 2>/dev/null || echo "(log file not found)"
 
   echo ""
   echo "--- Python / pip version inside container ---"
