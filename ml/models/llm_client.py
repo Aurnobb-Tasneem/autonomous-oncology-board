@@ -25,9 +25,19 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
+def _default_ollama_host() -> str:
+    v = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    return v.strip() if v and v.strip() else "http://localhost:11434"
+
+
+def _default_ollama_model() -> str:
+    v = os.getenv("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16")
+    return v.strip() if v and v.strip() else "llama3.3:70b-instruct-fp16"
+
+
 # ── Defaults ────────────────────────────────────────────────────────────────
-DEFAULT_HOST  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.3:70b")
+DEFAULT_HOST  = _default_ollama_host()
+DEFAULT_MODEL = _default_ollama_model()
 
 
 @dataclass
@@ -49,12 +59,15 @@ class OllamaClient:
 
     def __init__(
         self,
-        host: str = DEFAULT_HOST,
-        model: str = DEFAULT_MODEL,
+        host: Optional[str] = None,
+        model: Optional[str] = None,
         timeout: int = 180,
     ):
-        self.host    = host.rstrip("/")
-        self.model   = model
+        # Treat None / blank like “unset” so explicit host=None never overrides DEFAULT_*.
+        _h = (host or "").strip() or DEFAULT_HOST
+        _m = (model or "").strip() or DEFAULT_MODEL
+        self.host    = _h.rstrip("/")
+        self.model   = _m
         self.timeout = timeout
         log.info(f"OllamaClient: host={self.host}  model={self.model}")
 

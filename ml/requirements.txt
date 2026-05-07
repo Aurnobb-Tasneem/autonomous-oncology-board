@@ -8,7 +8,7 @@
 #
 # STEP 2: Install and start Ollama (ROCm-native LLM serving):
 #   curl -fsSL https://ollama.com/install.sh | sh
-#   ollama pull llama3.3:70b
+#   ollama pull llama3.3:70b-instruct-fp16
 #
 # STEP 3: Install GigaPath (gated HuggingFace model + timm integration):
 #   pip install git+https://github.com/prov-gigapath/prov-gigapath

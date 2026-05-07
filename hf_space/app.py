@@ -81,9 +81,9 @@ def _get_demo_cases() -> list[str]:
 
 # ── Mock fallback ──────────────────────────────────────────────────────────────
 
-def _mock_report(case_name: str) -> str:
-    """Return a mock management plan for demo/offline mode."""
-    mock = {
+def _mock_report(case_name: str) -> dict:
+    """Return a mock management plan dict for demo/offline mode."""
+    return {
         "case_id": f"demo_{case_name}",
         "management_plan": {
             "diagnosis": {
@@ -106,7 +106,6 @@ def _mock_report(case_name: str) -> str:
             "disclaimer": "AI research tool. NOT for clinical use.",
         }
     }
-    return json.dumps(mock, indent=2)
 
 
 # ── Core functions ─────────────────────────────────────────────────────────────
@@ -119,7 +118,7 @@ def run_demo_case(case_name: str) -> tuple[str, str, str]:
     """
     if not API_URL:
         # Offline/mock mode
-        report = _mock_report(case_name)
+        report = _mock_report(case_name)  # returns dict — gr.JSON expects dict
         return (
             "✅ Mock mode — showing pre-baked response (AOB_API_URL not configured)",
             "🔬 Pathologist → 📚 Researcher → 👨‍⚕️ Oncologist → 🗣️ Debate → ✅ Done",
@@ -169,7 +168,8 @@ def run_demo_case(case_name: str) -> tuple[str, str, str]:
         f"✅ Complete — {report_data.get('debate_rounds_completed', 0)} debate round(s) | "
         f"Time: {report_data.get('total_time_s', '?')}s"
     )
-    return status_text, "\n".join(log_lines), json.dumps(report_data, indent=2)
+    # gr.JSON expects a dict, not a pre-serialised string
+    return status_text, "\n".join(log_lines), report_data
 
 
 def run_custom_case(
@@ -200,7 +200,7 @@ def run_custom_case(
     for img in images:
         try:
             buf = io.BytesIO()
-            img.save(buf, format="JPEG")
+            img.convert("RGB").save(buf, format="JPEG")
             patches_b64.append(base64.b64encode(buf.getvalue()).decode())
         except Exception as e:
             return f"❌ Failed to encode image: {e}", "", ""
@@ -254,7 +254,8 @@ def run_custom_case(
         f"✅ Complete — {report_data.get('debate_rounds_completed', 0)} debate round(s) | "
         f"Time: {report_data.get('total_time_s', '?')}s"
     )
-    return status_text, "\n".join(log_lines), json.dumps(report_data, indent=2)
+    # gr.JSON expects a dict, not a pre-serialised string
+    return status_text, "\n".join(log_lines), report_data
 
 
 # ── Gradio UI ─────────────────────────────────────────────────────────────────

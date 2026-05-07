@@ -9,9 +9,9 @@ import {
   CartesianGrid,
   Tooltip,
   ReferenceLine,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
+import { getVramHistory } from "@/lib/api";
 
 interface VramPoint {
   ts: number;
@@ -26,8 +26,8 @@ interface Props {
   showH100Line?: boolean;
 }
 
-const H100_LIMIT_GB   = 80;
-const MI300X_TOTAL_GB = 192;
+const H100_LIMIT_GB = 80;
+const MI300X_FALLBACK_GB = 192;
 
 function formatElapsed(ts: number, oldest: number): string {
   const s = Math.round(ts - oldest);
@@ -35,10 +35,11 @@ function formatElapsed(ts: number, oldest: number): string {
   return `${Math.floor(s / 60)}m${s % 60}s`;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label, totalCap }: any) => {
   if (!active || !payload?.length) return null;
   const used = payload.find((p: any) => p.dataKey === "used_gb");
   const pct  = payload.find((p: any) => p.dataKey === "pct");
+  const cap = typeof totalCap === "number" && totalCap > 0 ? totalCap : MI300X_FALLBACK_GB;
   return (
     <div
       style={{
@@ -56,7 +57,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         </div>
       )}
       {pct && (
-        <div style={{ color: "#64748b" }}>{pct.value.toFixed(1)}% of 192 GB</div>
+        <div style={{ color: "#64748b" }}>{pct.value.toFixed(1)}% of {cap.toFixed(0)} GB</div>
       )}
       {used && used.value > H100_LIMIT_GB && (
         <div style={{ color: "#f87171", marginTop: 4 }}>
@@ -74,17 +75,18 @@ export default function VramTimeSeries({
 }: Props) {
   const [points, setPoints]     = useState<VramPoint[]>([]);
   const [currentGb, setCurrentGb] = useState(0);
+  const [deviceTotalGb, setDeviceTotalGb] = useState(MI300X_FALLBACK_GB);
   const [oomIfH100, setOomIfH100] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchVram = async () => {
     try {
-      const res = await fetch(`/api/vram/history?seconds=${windowSeconds}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await getVramHistory(windowSeconds);
       setPoints(data.points ?? []);
       setCurrentGb(data.current_gb ?? 0);
+      const cap = data.total_gb > 0 ? data.total_gb : MI300X_FALLBACK_GB;
+      setDeviceTotalGb(cap);
       setOomIfH100(data.oom_if_h100 ?? false);
       setError(null);
     } catch (e: any) {
@@ -107,7 +109,7 @@ export default function VramTimeSeries({
     pct:     p.pct,
   }));
 
-  const usedPct    = (currentGb / MI300X_TOTAL_GB) * 100;
+  const usedPct    = (currentGb / deviceTotalGb) * 100;
   const h100UsedPct = Math.min(100, (currentGb / H100_LIMIT_GB) * 100);
 
   return (
@@ -136,7 +138,7 @@ export default function VramTimeSeries({
             🖥️ Live VRAM — AMD MI300X
           </h3>
           <div style={{ color: "#64748b", fontSize: "0.72rem", marginTop: 2 }}>
-            192 GB HBM3 · polled every 2s · last {windowSeconds}s window
+            {deviceTotalGb.toFixed(0)} GB HBM3 · polled every 2s · last {windowSeconds}s window
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -167,8 +169,8 @@ export default function VramTimeSeries({
             marginBottom: 3,
           }}
         >
-          <span>MI300X 192 GB</span>
-          <span>{currentGb.toFixed(1)} / 192 GB</span>
+          <span>MI300X {deviceTotalGb.toFixed(0)} GB</span>
+          <span>{currentGb.toFixed(1)} / {deviceTotalGb.toFixed(1)} GB</span>
         </div>
         <div
           style={{
@@ -275,12 +277,12 @@ export default function VramTimeSeries({
               interval="preserveStartEnd"
             />
             <YAxis
-              domain={[0, MI300X_TOTAL_GB]}
+              domain={[0, deviceTotalGb]}
               tick={{ fill: "#475569", fontSize: 10 }}
               tickLine={false}
               unit=" GB"
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip totalCap={deviceTotalGb} />} />
             {showH100Line && (
               <ReferenceLine
                 y={H100_LIMIT_GB}
@@ -296,12 +298,12 @@ export default function VramTimeSeries({
               />
             )}
             <ReferenceLine
-              y={MI300X_TOTAL_GB}
+              y={deviceTotalGb}
               stroke="#22d3ee"
               strokeDasharray="4 4"
               strokeWidth={1}
               label={{
-                value: "MI300X 192 GB",
+                value: `MI300X ${deviceTotalGb.toFixed(0)} GB`,
                 fill: "#22d3ee",
                 fontSize: 10,
                 position: "insideBottomRight",

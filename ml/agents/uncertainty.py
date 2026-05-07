@@ -96,9 +96,9 @@ def mc_dropout_inference(
     all_pass_confidences: list[float] = []  # dominant class confidence per pass
     all_pass_class_probs: list[dict] = []   # full class distribution per pass
 
-    proto_norm = F.normalize(prototypes.float(), dim=1)  # (C, 1536)
-
     with torch.no_grad():
+        proto_norm = F.normalize(prototypes.float(), dim=1)  # (C, 1536) — inside no_grad to avoid unnecessary graph
+
         for pass_idx in range(n_passes):
             # Embed all patches for this stochastic pass
             pass_embeddings = []
@@ -131,10 +131,26 @@ def mc_dropout_inference(
     # Restore eval mode fully (disable dropout)
     model.eval()
 
+    if not all_pass_confidences:
+        # No passes completed — return a zero-confidence fallback
+        log.warning("MC Dropout: no passes completed, returning zero-confidence result")
+        return UncertaintyResult(
+            mean_confidence=0.0,
+            std_confidence=0.0,
+            confidence_interval_low=0.0,
+            confidence_interval_high=0.0,
+            uncertainty_interval="0.0% ± 0.0%",
+            high_uncertainty=True,
+            n_passes=0,
+            dominant_class=tissue_classes[0] if tissue_classes else "unknown",
+            class_probabilities={cls: 0.0 for cls in tissue_classes},
+        )
+
     # Aggregate across passes
     confs = torch.tensor(all_pass_confidences)
     mean_conf = float(confs.mean())
-    std_conf  = float(confs.std())
+    # confs.std() uses Bessel correction (÷ n-1); guard against NaN when n==1.
+    std_conf  = float(confs.std()) if n_passes > 1 else 0.0
 
     # Dominant class by mean confidence
     mean_class_probs: dict[str, float] = {}

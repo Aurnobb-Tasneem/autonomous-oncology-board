@@ -78,8 +78,8 @@ if ! pgrep -x ollama > /dev/null; then
   sleep 3
 fi
 
-echo "--> Pulling Llama 3.3 70B (this may take 30-60 min on first run)..."
-ollama pull llama3.3:70b
+echo "--> Pulling Llama 3.3 70B FP16 (large download; first run may take a long time)..."
+ollama pull llama3.3:70b-instruct-fp16
 
 # Allow Docker → host Ollama traffic (use detected subnet, fallback to /16).
 echo "--> Opening firewall port ${OLLAMA_PORT} for Docker subnet..."
@@ -164,6 +164,7 @@ docker exec "$CONTAINER" bash -c "
   cd /workspace/aob &&
   export PYTHONPATH=/workspace/aob &&
   export OLLAMA_HOST=${OLLAMA_HOST} &&
+  export OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.3:70b-instruct-fp16} &&
   export HF_TOKEN=${HF_TOKEN:-''} &&
   python scripts/smoke_test.py
 " && echo "    Smoke test PASSED" || echo "    WARNING: Smoke test had issues — check output above"
@@ -180,6 +181,7 @@ docker exec -d "$CONTAINER" bash -c "
   cd /workspace/aob &&
   export PYTHONPATH=/workspace/aob &&
   export OLLAMA_HOST=${OLLAMA_HOST} &&
+  export OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.3:70b-instruct-fp16} &&
   export HF_TOKEN=${HF_TOKEN:-''} &&
   export QWEN_VL_MODEL=${QWEN_VL_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct} &&
   export TNM_VLLM_BASE_URL=${TNM_VLLM_BASE_URL:-http://localhost:8006/v1} &&

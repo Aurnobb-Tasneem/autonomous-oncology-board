@@ -84,6 +84,7 @@ sleep 2
 # bridge gateway — so we never need to hardcode 172.17.0.1 again.
 HF_TOKEN=""
 OLLAMA_HOST=""
+OLLAMA_MODEL=""
 QWEN_VL_MODEL=""
 TNM_VLLM_BASE_URL=""
 BIOMARKER_VLLM_BASE_URL=""
@@ -91,10 +92,16 @@ TREATMENT_VLLM_BASE_URL=""
 if [ -f "$REPO_DIR/.env" ]; then
   HF_TOKEN=$(grep -E '^HF_TOKEN=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
   OLLAMA_HOST=$(grep -E '^OLLAMA_HOST=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+  OLLAMA_MODEL=$(grep -E '^OLLAMA_MODEL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
   QWEN_VL_MODEL=$(grep -E '^QWEN_VL_MODEL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
   TNM_VLLM_BASE_URL=$(grep -E '^TNM_VLLM_BASE_URL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
   BIOMARKER_VLLM_BASE_URL=$(grep -E '^BIOMARKER_VLLM_BASE_URL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
   TREATMENT_VLLM_BASE_URL=$(grep -E '^TREATMENT_VLLM_BASE_URL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+fi
+
+# Default FP16 70B tag when .env omits OLLAMA_MODEL (matches api.py / llm_client.py)
+if [ -z "$OLLAMA_MODEL" ]; then
+  OLLAMA_MODEL="llama3.3:70b-instruct-fp16"
 fi
 
 # If OLLAMA_HOST wasn't persisted by bootstrap yet, re-detect the gateway now.
@@ -105,11 +112,13 @@ if [ -z "$OLLAMA_HOST" ]; then
   echo "    OLLAMA_HOST not in .env — detected as ${OLLAMA_HOST}"
 fi
 echo "--> OLLAMA_HOST: ${OLLAMA_HOST}"
+echo "--> OLLAMA_MODEL: ${OLLAMA_MODEL}"
 
 docker exec -d "$CONTAINER" bash -c "
   cd /workspace/aob &&
   export PYTHONPATH=/workspace/aob &&
   export OLLAMA_HOST='${OLLAMA_HOST}' &&
+  export OLLAMA_MODEL='${OLLAMA_MODEL}' &&
   export HF_TOKEN='${HF_TOKEN}' &&
   export QWEN_VL_MODEL='${QWEN_VL_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}' &&
   export TNM_VLLM_BASE_URL='${TNM_VLLM_BASE_URL:-http://localhost:8006/v1}' &&

@@ -14,6 +14,18 @@ export interface AnalyzeResponse {
   message: string;
 }
 
+export interface VramProcessRow {
+  process: string;
+  label: string;
+  gb: number;
+}
+
+export interface VramModelComponent {
+  id: string;
+  label: string;
+  gb: number;
+}
+
 export interface VramInfo {
   used_gb: number;
   total_gb: number;
@@ -30,6 +42,12 @@ export interface VramInfo {
     runtime_overhead_gb?: number | null;
     [key: string]: number | null | undefined;
   };
+  /** Friendly rows from backend (rocm-smi --showpids + labels) */
+  processes_display?: VramProcessRow[] | null;
+  /** Estimated GigaPath / Llama weights / KV / overhead for dashboard copy */
+  model_components?: VramModelComponent[] | null;
+  unattributed_gpu_gb?: number | null;
+  ollama_model?: string;
   /** Real per-process VRAM from rocm-smi --showpids  e.g. { uvicorn: 20.8, ollama: 48.2 } */
   processes?: Record<string, number> | null;
   source: "rocm-smi" | "mock";
@@ -204,6 +222,22 @@ export async function getSpecialistsHealth(): Promise<SpecialistsHealth> {
 
 export async function getVram(): Promise<VramInfo> {
   const res = await fetch(`${BASE}/api/vram`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`VRAM ${res.status}`);
+  return res.json();
+}
+
+export interface VramHistoryResponse {
+  points: { ts: number; used_gb: number; total_gb: number; pct: number }[];
+  current_gb: number;
+  total_gb: number;
+  h100_limit_gb: number;
+  mi300x_total_gb: number;
+  oom_if_h100: boolean;
+}
+
+export async function getVramHistory(seconds: number): Promise<VramHistoryResponse> {
+  const res = await fetch(`${BASE}/api/vram/history?seconds=${seconds}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`VRAM history ${res.status}`);
   return res.json();
 }
 

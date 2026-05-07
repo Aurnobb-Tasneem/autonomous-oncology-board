@@ -46,7 +46,7 @@ from ml.agents.differential import DifferentialDxAgent, DifferentialResult
 from ml.agents.patient_summary import PatientSummaryAgent
 from ml.agents.trial_matcher import TrialMatcherAgent, TrialMatch
 from ml.agents.counterfactual import CounterfactualAgent, CounterfactualPlan
-from ml.models.llm_client import OllamaClient
+from ml.models.llm_client import OllamaClient, DEFAULT_HOST, DEFAULT_MODEL
 from ml.rag.retriever import OncologyRetriever
 
 log = logging.getLogger(__name__)
@@ -218,7 +218,8 @@ class AutonomousOncologyBoard:
 
     All agents share the same MI300X VRAM pool:
       - GigaPath (Pathologist) holds ~3 GB in the Docker container
-      - Llama 3.3 70B (Researcher + Oncologist) holds ~40 GB via Ollama on HOST
+      - Llama 3.3 70B FP16 (Researcher + Oncologist) ~140 GB weights via Ollama on HOST
+        (set OLLAMA_MODEL=llama3.3:70b-instruct-fp16); KV cache adds more on top
       - Both visible in rocm-smi (192 GB unified HBM3)
 
     This design is physically impossible on a single NVIDIA H100 (80 GB VRAM).
@@ -231,10 +232,9 @@ class AutonomousOncologyBoard:
         ollama_model: Optional[str] = None,
     ):
         # Shared LLM client (Researcher + Oncologist + MetaEvaluator all use it)
-        self.llm = OllamaClient(
-            host=ollama_host or None,
-            model=ollama_model or None,
-        )
+        _host = (ollama_host or "").strip() or DEFAULT_HOST
+        _model = (ollama_model or "").strip() or DEFAULT_MODEL
+        self.llm = OllamaClient(host=_host, model=_model)
 
         # Shared retriever
         self.retriever = OncologyRetriever()
@@ -623,6 +623,26 @@ class AutonomousOncologyBoard:
         plan.pfs_model = pfs.model
         plan.pfs_assumptions = pfs.assumptions
 
+        # ── Counterfactual Reasoning (post-plan) ──────────────────────────
+        # Run a default "what if EGFR negative?" counterfactual so the
+        # result object always carries a CounterfactualPlan that the frontend
+        # and /api/counterfactual endpoint can serve immediately.
+        counterfactual_plan: Optional[CounterfactualPlan] = None
+        try:
+            _emit("counterfactual", "Counterfactual agent: running default 'EGFR negative' scenario...", 94)
+            counterfactual_plan = self.counterfactual_agent.replan(
+                original_plan=plan,
+                edits={"egfr_status": "EGFR negative (wild-type)"},
+            )
+            _emit(
+                "counterfactual",
+                f"Counterfactual: {counterfactual_plan.diff_summary()[:120]}",
+                95,
+            )
+        except Exception as e:
+            log.warning(f"Board: counterfactual agent error ({e}) — continuing")
+            _emit("counterfactual", f"Counterfactual skipped: {e}", 95)
+
         total_time = round(time.perf_counter() - t0, 2)
 
         final_msg = (
@@ -649,6 +669,7 @@ class AutonomousOncologyBoard:
             differential_dx=differential_result,
             patient_summary=patient_summary_text,
             trial_matches=trial_matches,
+            counterfactual=counterfactual_plan,
             unavailable_specialists=_unavailable_specialists,
             fallback_agents=_fallback_agents,
         )
@@ -672,7 +693,7 @@ class AutonomousOncologyBoard:
                 confidence=pathology.confidence,
                 centroid=pathology.embedding_stats.centroid,
                 first_line_tx=plan.treatment_plan.first_line,
-                plan_summary=plan.patient_summary,
+                plan_summary=patient_summary_text,
                 n_patches=pathology.n_patches,
             )
         except Exception as mem_err:

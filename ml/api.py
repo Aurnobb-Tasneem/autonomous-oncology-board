@@ -20,6 +20,7 @@ Usage (run inside Docker container on port 8000):
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
@@ -28,6 +29,7 @@ import os
 import threading
 import time
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from enum import Enum
@@ -35,15 +37,13 @@ from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ml.board import AutonomousOncologyBoard, BoardResult
 from ml.models.llm_client import OllamaClient
-from collections import deque
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,6 +51,13 @@ logging.basicConfig(
 )
 log = logging.getLogger("aob_api")
 
+
+def _env_nonempty(key: str, default: str) -> str:
+    """Like os.getenv but treats unset/blank as missing (avoids '' breaking URLs)."""
+    v = os.getenv(key)
+    if v is None or not str(v).strip():
+        return default
+    return str(v).strip()
 
 # ── Job state machine ────────────────────────────────────────────────────────
 class JobStatus(str, Enum):
@@ -135,7 +142,7 @@ def _load_jobs_from_disk() -> None:
     loaded = 0
     for path in _JOBS_DIR.glob("*.json"):
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             job  = Job(job_id=data["job_id"], case_id=data["case_id"])
             job.status     = JobStatus(data["status"])
             # Jobs that were RUNNING when the API died are now stale — mark FAILED.
@@ -205,16 +212,16 @@ def _vram_monitor_loop():
 # ── App lifecycle ────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _board
+    global _board, _vram_monitor_running
     log.info("AOB API: starting up...")
 
     # Rehydrate completed jobs from disk before accepting new requests.
     _load_jobs_from_disk()
 
     _board = AutonomousOncologyBoard(
-        hf_token=os.getenv("HF_TOKEN", ""),
-        ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-        ollama_model=os.getenv("OLLAMA_MODEL", "llama3.3:70b"),
+        hf_token=_env_nonempty("HF_TOKEN", ""),
+        ollama_host=_env_nonempty("OLLAMA_HOST", "http://localhost:11434"),
+        ollama_model=_env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16"),
     )
     log.info("AOB API: board initialised — ready to accept cases")
 
@@ -225,7 +232,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    global _vram_monitor_running
     _vram_monitor_running = False
     log.info("AOB API: shutting down")
 
@@ -238,14 +244,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Serve the demo frontend at /
+# Serve the demo frontend at / (only when the static build is present)
 _static_dir = Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
-@app.get("/")
-async def serve_demo():
-    return FileResponse(str(_static_dir / "index.html"))
+    @app.get("/")
+    async def serve_demo():
+        index = _static_dir / "index.html"
+        if not index.exists():
+            return JSONResponse({"status": "ok", "message": "AOB API is running"})
+        return FileResponse(str(index))
 
 app.add_middleware(
     CORSMiddleware,
@@ -300,6 +309,9 @@ def _run_board_job(job: Job, images_bytes: list[bytes], metadata: dict):
         job.add_step("system", "Case received — starting AOB pipeline", 5)
         _save_job(job)   # persist: RUNNING
 
+        if _board is None:
+            raise RuntimeError("Board not initialised — startup may have failed")
+
         # Decode images
         job.add_step("system", f"Decoding {len(images_bytes)} image patches", 8)
         images = [Image.open(io.BytesIO(b)).convert("RGB") for b in images_bytes]
@@ -338,7 +350,8 @@ def _probe_specialists() -> dict:
     LoRA adapters are loaded. Returns a dict safe to embed in /health.
     """
     import urllib.request as _urlreq
-    base = os.getenv("TNM_VLLM_BASE_URL", "http://localhost:8006/v1").rstrip("/v1").rstrip("/")
+    _raw_base = os.getenv("TNM_VLLM_BASE_URL", "http://localhost:8006/v1")
+    base = _raw_base.removesuffix("/v1").rstrip("/")
     models_url = f"{base}/v1/models"
     try:
         with _urlreq.urlopen(models_url, timeout=3) as r:
@@ -375,7 +388,7 @@ async def health():
     return {
         "status":             "ok",
         "ollama":             "connected" if llm_ok else "unreachable",
-        "model":              os.getenv("OLLAMA_MODEL", "llama3.3:70b"),
+        "model":              _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16"),
         "board_ready":        _board is not None,
         "active_jobs":        len([j for j in _jobs.values() if j.status == JobStatus.RUNNING]),
         "specialists_status": spec_status["status"],
@@ -488,10 +501,10 @@ async def stream_status(job_id: str):
 
             if current_status in (JobStatus.DONE, JobStatus.FAILED):
                 # Send final status event
-                yield f"event: done\ndata: {json.dumps({'status': current_status, 'job_id': job_id})}\n\n"
+                yield f"event: done\ndata: {json.dumps({'status': current_status.value, 'job_id': job_id})}\n\n"
                 break
 
-            await __import__("asyncio").sleep(0.5)
+            await asyncio.sleep(0.5)
 
     return StreamingResponse(
         event_generator(),
@@ -516,7 +529,7 @@ async def get_report(job_id: str):
     if job.status == JobStatus.RUNNING or job.status == JobStatus.QUEUED:
         return JSONResponse(
             status_code=202,
-            content={"status": job.status, "message": "Still processing"},
+            content={"status": job.status.value, "message": "Still processing"},
         )
     if job.status == JobStatus.FAILED:
         raise HTTPException(status_code=500, detail=job.error)
@@ -531,7 +544,7 @@ async def list_cases():
         {
             "job_id": j.job_id,
             "case_id": j.case_id,
-            "status": j.status,
+            "status": j.status.value,
             "created_at": j.created_at,
             "n_steps": len(j.steps),
         }
@@ -648,21 +661,82 @@ async def get_vram():
         log.debug(f"rocm-smi --showpids unavailable: {e}")
 
     # ── Derive per-model breakdown from real process data ─────────────────
-    # GigaPath lives in the uvicorn process; Llama 70B lives in ollama.
-    # KV cache = ollama total − Llama weights; runtime overhead = uvicorn − GigaPath.
-    GIGAPATH_WEIGHTS_GB = 3.2
-    LLAMA_70B_WEIGHTS_GB = 40.0
+    # GigaPath lives in the uvicorn/python process; Llama 70B lives in ollama.
+    # KV cache ≈ Ollama RSS − declared weight footprint; overhead ≈ python − GigaPath est.
+    GIGAPATH_WEIGHTS_GB = float(os.getenv("VRAM_GIGAPATH_GB", "3.2"))
+    _mw = os.getenv("VRAM_LLAMA_WEIGHTS_GB")
+    if _mw:
+        LLAMA_70B_WEIGHTS_GB = float(_mw)
+    else:
+        _om = _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16").lower()
+        LLAMA_70B_WEIGHTS_GB = 140.0 if "fp16" in _om else 40.0
 
-    uvicorn_gb = processes.get("uvicorn", 0.0) or processes.get("python", 0.0) or processes.get("python3", 0.0)
-    ollama_gb  = processes.get("ollama", 0.0)
+    uvicorn_gb = (
+        processes.get("uvicorn", 0.0)
+        or processes.get("python", 0.0)
+        or processes.get("python3", 0.0)
+    )
+    ollama_gb = processes.get("ollama", 0.0)
 
     if ollama_gb > 0:
-        kv_cache_gb      = max(0.0, round(ollama_gb  - LLAMA_70B_WEIGHTS_GB, 1))
+        kv_cache_gb = max(0.0, round(ollama_gb - LLAMA_70B_WEIGHTS_GB, 1))
         runtime_overhead = max(0.0, round(uvicorn_gb - GIGAPATH_WEIGHTS_GB, 1))
     else:
-        # Fall back to formula when process data is unavailable
-        kv_cache_gb      = max(0.0, round(used_gb - (GIGAPATH_WEIGHTS_GB + LLAMA_70B_WEIGHTS_GB), 1))
+        kv_cache_gb = max(
+            0.0, round(used_gb - (GIGAPATH_WEIGHTS_GB + LLAMA_70B_WEIGHTS_GB), 1)
+        )
         runtime_overhead = None
+
+    proc_sum = sum(processes.values()) if processes else 0.0
+    unattributed_gpu_gb = (
+        round(max(0.0, used_gb - proc_sum), 1) if processes and proc_sum > 0 else None
+    )
+    if unattributed_gpu_gb is not None and unattributed_gpu_gb < 0.5:
+        unattributed_gpu_gb = None
+
+    _PROC_LABELS = {
+        "ollama": "Ollama — Llama 70B + KV cache",
+        "uvicorn": "FastAPI / GigaPath (uvicorn)",
+        "python": "Python — ML stack (GigaPath + torch)",
+        "python3": "Python3 — ML stack",
+        "vllm": "vLLM — specialist LoRA server",
+    }
+    processes_display: list[dict] = []
+    if processes:
+        for proc, gb_val in sorted(processes.items(), key=lambda x: -x[1]):
+            processes_display.append({
+                "process": proc,
+                "label": _PROC_LABELS.get(proc, proc),
+                "gb": gb_val,
+            })
+        if unattributed_gpu_gb:
+            processes_display.append({
+                "process": "_other",
+                "label": "Other / driver (not in --showpids)",
+                "gb": unattributed_gpu_gb,
+            })
+
+    _llama_lbl = (
+        "Llama 70B weights (FP16 est.)"
+        if LLAMA_70B_WEIGHTS_GB >= 100
+        else "Llama 70B weights (quantized est.)"
+    )
+    model_components: list[dict] = [
+        {"id": "gigapath", "label": "GigaPath (ViT, est.)", "gb": GIGAPATH_WEIGHTS_GB},
+        {"id": "llama_weights", "label": _llama_lbl, "gb": LLAMA_70B_WEIGHTS_GB},
+    ]
+    if kv_cache_gb > 0:
+        model_components.append({
+            "id": "kv_cache",
+            "label": "KV cache (inside Ollama, est.)",
+            "gb": kv_cache_gb,
+        })
+    if runtime_overhead is not None and runtime_overhead > 0:
+        model_components.append({
+            "id": "runtime",
+            "label": "API / torch overhead (est.)",
+            "gb": runtime_overhead,
+        })
 
     return {
         "used_gb":      used_gb,
@@ -674,12 +748,15 @@ async def get_vram():
         "h100_limit_gb":  80.0,
         "exceeds_h100":   used_gb > 80.0,
         "model_breakdown": {
-            "gigapath_gb":        GIGAPATH_WEIGHTS_GB,
-            "llama_gb":           LLAMA_70B_WEIGHTS_GB,
-            "kv_cache_gb":        kv_cache_gb,
+            "gigapath_gb":         GIGAPATH_WEIGHTS_GB,
+            "llama_gb":            LLAMA_70B_WEIGHTS_GB,
+            "kv_cache_gb":         kv_cache_gb,
             "runtime_overhead_gb": runtime_overhead,
         },
-        # Actual per-process breakdown from rocm-smi --showpids
+        "model_components": model_components,
+        "processes_display": processes_display if processes_display else None,
+        "unattributed_gpu_gb": unattributed_gpu_gb,
+        "ollama_model": _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16"),
         "processes": {k: v for k, v in processes.items()} if processes else None,
         "hardware": "AMD Instinct MI300X · 192 GB HBM3",
         "timestamp": datetime.now(timezone.utc).isoformat(),

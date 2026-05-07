@@ -161,7 +161,7 @@ The final report includes the full **Debate Transcript** and **revision diff**.
 # HuggingFace token (GigaPath is gated; Qwen2.5-VL download recommended)
 #   export HF_TOKEN=hf_...
 # Ollama with ROCm support
-ollama pull llama3.3:70b
+ollama pull llama3.3:70b-instruct-fp16
 ```
 
 ### Install
@@ -172,7 +172,7 @@ pip install -r requirements.txt
 
 ### Run
 ```bash
-# 1. Start Ollama (serves Llama 3.3 70B)
+# 1. Start Ollama (pull: ollama pull llama3.3:70b-instruct-fp16)
 ollama serve
 
 # 2. Start specialist LoRA adapters
