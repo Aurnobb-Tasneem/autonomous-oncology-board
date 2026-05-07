@@ -31,6 +31,11 @@ export interface VramInfo {
   total_gb: number;
   free_gb: number;
   percent_used: number;
+  /** GiB (1024^3) from VRAM byte counters */
+  used_gib?: number;
+  total_gib?: number;
+  free_gib?: number;
+  percent_gib?: number;
   model_breakdown?: {
     gigapath_gb: number;
     qwen_vl_gb?: number;
@@ -227,11 +232,21 @@ export async function getVram(): Promise<VramInfo> {
 }
 
 export interface VramHistoryResponse {
-  points: { ts: number; used_gb: number; total_gb: number; pct: number }[];
+  points: {
+    ts: number;
+    used_gb: number;
+    total_gb: number;
+    used_gib?: number;
+    total_gib?: number;
+    pct: number;
+  }[];
   current_gb: number;
   total_gb: number;
+  current_gib?: number;
+  total_gib?: number;
   h100_limit_gb: number;
   mi300x_total_gb: number;
+  mi300x_total_gib?: number;
   oom_if_h100: boolean;
 }
 

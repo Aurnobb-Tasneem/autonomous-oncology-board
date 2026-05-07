@@ -160,22 +160,34 @@ def _load_qwen_vl(hf_token: str, device_str: str):
     from transformers import AutoModelForVision2Seq, AutoProcessor
     from huggingface_hub import login as hf_login
 
-    if hf_token:
-        hf_login(token=hf_token, add_to_git_credential=False)
-    log.info("Qwen2.5-VL: HF token authenticated")
+    tok = (hf_token or "").strip()
+    if tok:
+        try:
+            hf_login(token=tok, add_to_git_credential=False)
+            log.info("Qwen2.5-VL: HF token authenticated")
+        except Exception as e:
+            log.warning(
+                "Qwen2.5-VL: HF_TOKEN rejected (%s). Dropping HF_TOKEN from env — "
+                "using CLI cache / anonymous access.",
+                e,
+            )
+            os.environ.pop("HF_TOKEN", None)
+            tok = ""
+    else:
+        log.info("Qwen2.5-VL: no HF token — cached CLI credentials / anonymous")
 
     dtype = torch.bfloat16 if device_str == "cuda" else torch.float32
     log.info(f"Qwen2.5-VL: loading {QWEN_VL_MODEL_ID} on {device_str} ({dtype}) ...")
 
     processor = AutoProcessor.from_pretrained(
         QWEN_VL_MODEL_ID,
-        token=hf_token or None,
+        token=tok or None,
         trust_remote_code=True,
     )
 
     model = AutoModelForVision2Seq.from_pretrained(
         QWEN_VL_MODEL_ID,
-        token=hf_token or None,
+        token=tok or None,
         torch_dtype=dtype,
         device_map="auto",
         trust_remote_code=True,

@@ -59,6 +59,30 @@ def _env_nonempty(key: str, default: str) -> str:
         return default
     return str(v).strip()
 
+
+def _sanitize_hf_token_env() -> None:
+    """
+    Hugging Face Hub prefers HF_TOKEN over `huggingface-cli login` cache.
+    An invalid token in the environment breaks every download — remove it early
+    so agents can fall back to CLI credentials.
+    """
+    raw = _env_nonempty("HF_TOKEN", "")
+    if not raw:
+        return
+    try:
+        from huggingface_hub import login as hf_login
+
+        hf_login(token=raw, add_to_git_credential=False)
+        log.info("HF_TOKEN validated successfully at startup")
+    except Exception as e:
+        log.warning(
+            "HF_TOKEN is invalid (%s). Removing it so Hub can use `huggingface-cli login` "
+            "cache or you can fix the token in .env.",
+            e,
+        )
+        os.environ.pop("HF_TOKEN", None)
+
+
 # ── Job state machine ────────────────────────────────────────────────────────
 class JobStatus(str, Enum):
     QUEUED     = "queued"
@@ -202,8 +226,11 @@ def _vram_monitor_loop():
 
         _vram_history.append({
             "ts": ts,
+            # Historical keys named *_gb were always GiB (1024**3); keep for compat.
             "used_gb":  vram_used_gb,
             "total_gb": vram_total_gb,
+            "used_gib": vram_used_gb,
+            "total_gib": vram_total_gb,
             "pct":      round(vram_used_gb / vram_total_gb * 100, 1) if vram_total_gb > 0 else 0.0,
         })
         time.sleep(2)
@@ -217,6 +244,8 @@ async def lifespan(app: FastAPI):
 
     # Rehydrate completed jobs from disk before accepting new requests.
     _load_jobs_from_disk()
+
+    _sanitize_hf_token_env()
 
     _board = AutonomousOncologyBoard(
         hf_token=_env_nonempty("HF_TOKEN", ""),
@@ -614,7 +643,12 @@ async def get_vram():
 
     import re as _re
 
+    _GIB = 1024 ** 3
+
     # ── Total VRAM (JSON — reliable on all ROCm versions) ─────────────────
+    total_b = 0
+    used_b = 0
+    source = "mock"
     try:
         mem_result = subprocess.run(
             ["rocm-smi", "--showmeminfo", "vram", "--json"],
@@ -624,19 +658,23 @@ async def get_vram():
             raise RuntimeError(mem_result.stderr)
         import json as _json
         raw = _json.loads(mem_result.stdout)
-        card     = next(iter(raw.values()), {})
-        total_b  = int(card.get("VRAM Total Memory (B)", 0))
-        used_b   = int(card.get("VRAM Total Used Memory (B)", 0))
-        total_gb = round(total_b / 1e9, 1)
-        used_gb  = round(used_b  / 1e9, 1)
-        pct      = round(used_gb / total_gb * 100, 1) if total_gb > 0 else 0
-        source   = "rocm-smi"
+        card = next(iter(raw.values()), {})
+        total_b = int(card.get("VRAM Total Memory (B)", 0))
+        used_b = int(card.get("VRAM Total Used Memory (B)", 0))
+        source = "rocm-smi"
     except Exception as e:
         log.warning(f"rocm-smi --showmeminfo failed: {e} — returning mock data")
-        used_gb  = 102.3
-        total_gb = 191.7
-        pct      = 53.4
-        source   = "mock"
+        total_b = int(192 * _GIB)
+        used_b = int(102 * _GIB)
+
+    total_gb = round(total_b / 1e9, 1)
+    used_gb = round(used_b / 1e9, 1)
+    free_gb = round(total_gb - used_gb, 1)
+    total_gib = round(total_b / _GIB, 2)
+    used_gib = round(used_b / _GIB, 2)
+    free_gib = round((total_b - used_b) / _GIB, 2)
+    pct = round(used_gb / total_gb * 100, 1) if total_gb > 0 else 0
+    pct_gib = round(100 * used_gib / total_gib, 2) if total_gib > 0 else 0
 
     # ── Per-process VRAM (rocm-smi --showpids text output) ────────────────
     # Format (header + data rows):
@@ -739,11 +777,17 @@ async def get_vram():
         })
 
     return {
+        # Decimal gigabytes (1e9) — legacy / approximate headline figures
         "used_gb":      used_gb,
         "total_gb":     total_gb,
-        "free_gb":      round(total_gb - used_gb, 1),
+        "free_gb":      free_gb,
+        # Gibibytes (1024**3) — matches MI300X “192 GB” marketing (= 192 GiB)
+        "used_gib":     used_gib,
+        "total_gib":    total_gib,
+        "free_gib":     free_gib,
         "percent":      pct,
         "percent_used": pct,
+        "percent_gib":  pct_gib,
         "source":       source,
         "h100_limit_gb":  80.0,
         "exceeds_h100":   used_gb > 80.0,
@@ -1009,13 +1053,18 @@ async def vram_history(seconds: int = 300):
 
     current_gb = points[-1]["used_gb"] if points else 0.0
     total_gb   = points[-1]["total_gb"] if points else 192.0
+    current_gib = points[-1].get("used_gib", current_gb)
+    total_gib   = points[-1].get("total_gib", total_gb)
 
     return JSONResponse({
         "points":          points,
         "current_gb":      current_gb,
         "total_gb":        total_gb,
+        "current_gib":     current_gib,
+        "total_gib":       total_gib,
         "h100_limit_gb":   80,       # The comparison line for the UI
         "mi300x_total_gb": 192,
+        "mi300x_total_gib": 192,
         "oom_if_h100":     current_gb > 80,
     })
 
@@ -1026,7 +1075,14 @@ async def vram_current():
     if _vram_history:
         latest = _vram_history[-1]
     else:
-        latest = {"ts": time.time(), "used_gb": 0.0, "total_gb": 192.0, "pct": 0.0}
+        latest = {
+            "ts": time.time(),
+            "used_gb": 0.0,
+            "total_gb": 192.0,
+            "used_gib": 0.0,
+            "total_gib": 192.0,
+            "pct": 0.0,
+        }
     return JSONResponse({**latest, "h100_limit_gb": 80, "oom_if_h100": latest["used_gb"] > 80})
 
 

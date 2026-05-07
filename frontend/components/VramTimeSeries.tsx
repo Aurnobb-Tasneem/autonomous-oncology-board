@@ -17,6 +17,8 @@ interface VramPoint {
   ts: number;
   used_gb: number;
   total_gb: number;
+  used_gib?: number;
+  total_gib?: number;
   pct: number;
 }
 
@@ -28,6 +30,7 @@ interface Props {
 
 const H100_LIMIT_GB = 80;
 const MI300X_FALLBACK_GB = 192;
+const MI300X_FALLBACK_GIB = 192;
 
 function formatElapsed(ts: number, oldest: number): string {
   const s = Math.round(ts - oldest);
@@ -35,11 +38,13 @@ function formatElapsed(ts: number, oldest: number): string {
   return `${Math.floor(s / 60)}m${s % 60}s`;
 }
 
-const CustomTooltip = ({ active, payload, label, totalCap }: any) => {
+const CustomTooltip = ({ active, payload, label, totalCap, unit }: any) => {
   if (!active || !payload?.length) return null;
-  const used = payload.find((p: any) => p.dataKey === "used_gb");
-  const pct  = payload.find((p: any) => p.dataKey === "pct");
-  const cap = typeof totalCap === "number" && totalCap > 0 ? totalCap : MI300X_FALLBACK_GB;
+  const u = unit === "GiB" ? "GiB" : "GB";
+  const fallback = unit === "GiB" ? MI300X_FALLBACK_GIB : MI300X_FALLBACK_GB;
+  const used = payload.find((p: any) => p.dataKey === "used_primary");
+  const pct = payload.find((p: any) => p.dataKey === "pct");
+  const cap = typeof totalCap === "number" && totalCap > 0 ? totalCap : fallback;
   return (
     <div
       style={{
@@ -53,11 +58,13 @@ const CustomTooltip = ({ active, payload, label, totalCap }: any) => {
       <div style={{ color: "#94a3b8", marginBottom: 4 }}>T+{label}</div>
       {used && (
         <div style={{ color: "#22d3ee", fontWeight: 700 }}>
-          Used: {used.value.toFixed(1)} GB
+          Used: {used.value.toFixed(2)} {u}
         </div>
       )}
       {pct && (
-        <div style={{ color: "#64748b" }}>{pct.value.toFixed(1)}% of {cap.toFixed(0)} GB</div>
+        <div style={{ color: "#64748b" }}>
+          {pct.value.toFixed(1)}% of {cap.toFixed(unit === "GiB" ? 1 : 0)} {u}
+        </div>
       )}
       {used && used.value > H100_LIMIT_GB && (
         <div style={{ color: "#f87171", marginTop: 4 }}>
@@ -76,6 +83,8 @@ export default function VramTimeSeries({
   const [points, setPoints]     = useState<VramPoint[]>([]);
   const [currentGb, setCurrentGb] = useState(0);
   const [deviceTotalGb, setDeviceTotalGb] = useState(MI300X_FALLBACK_GB);
+  /** True when API exposes GiB fields — aligns MI300X “192 GB” with 1024³ counters */
+  const [vramUnit, setVramUnit] = useState<"GiB" | "GB">("GB");
   const [oomIfH100, setOomIfH100] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -84,8 +93,16 @@ export default function VramTimeSeries({
     try {
       const data = await getVramHistory(windowSeconds);
       setPoints(data.points ?? []);
-      setCurrentGb(data.current_gb ?? 0);
-      const cap = data.total_gb > 0 ? data.total_gb : MI300X_FALLBACK_GB;
+      const giB =
+        typeof data.total_gib === "number" && data.total_gib > 0;
+      setVramUnit(giB ? "GiB" : "GB");
+      const cur = giB ? (data.current_gib ?? data.current_gb ?? 0) : (data.current_gb ?? 0);
+      const cap = giB
+        ? (data.total_gib as number)
+        : data.total_gb > 0
+          ? data.total_gb
+          : MI300X_FALLBACK_GB;
+      setCurrentGb(cur);
       setDeviceTotalGb(cap);
       setOomIfH100(data.oom_if_h100 ?? false);
       setError(null);
@@ -104,9 +121,10 @@ export default function VramTimeSeries({
 
   const oldest   = points[0]?.ts ?? Date.now() / 1000;
   const chartData = points.map((p) => ({
-    label:   formatElapsed(p.ts, oldest),
-    used_gb: p.used_gb,
-    pct:     p.pct,
+    label: formatElapsed(p.ts, oldest),
+    used_primary:
+      vramUnit === "GiB" && typeof p.used_gib === "number" ? p.used_gib : p.used_gb,
+    pct: p.pct,
   }));
 
   const usedPct    = (currentGb / deviceTotalGb) * 100;
@@ -138,7 +156,7 @@ export default function VramTimeSeries({
             🖥️ Live VRAM — AMD MI300X
           </h3>
           <div style={{ color: "#64748b", fontSize: "0.72rem", marginTop: 2 }}>
-            {deviceTotalGb.toFixed(0)} GB HBM3 · polled every 2s · last {windowSeconds}s window
+            {deviceTotalGb.toFixed(0)} {vramUnit} HBM3 · polled every 2s · last {windowSeconds}s window
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -150,7 +168,7 @@ export default function VramTimeSeries({
               lineHeight: 1.1,
             }}
           >
-            {currentGb.toFixed(1)} GB
+            {currentGb.toFixed(2)} {vramUnit}
           </div>
           <div style={{ color: "#64748b", fontSize: "0.72rem" }}>
             {usedPct.toFixed(1)}% utilised
@@ -169,8 +187,10 @@ export default function VramTimeSeries({
             marginBottom: 3,
           }}
         >
-          <span>MI300X {deviceTotalGb.toFixed(0)} GB</span>
-          <span>{currentGb.toFixed(1)} / {deviceTotalGb.toFixed(1)} GB</span>
+          <span>MI300X {deviceTotalGb.toFixed(1)} {vramUnit}</span>
+          <span>
+            {currentGb.toFixed(2)} / {deviceTotalGb.toFixed(2)} {vramUnit}
+          </span>
         </div>
         <div
           style={{
@@ -280,9 +300,9 @@ export default function VramTimeSeries({
               domain={[0, deviceTotalGb]}
               tick={{ fill: "#475569", fontSize: 10 }}
               tickLine={false}
-              unit=" GB"
+              unit={vramUnit === "GiB" ? " GiB" : " GB"}
             />
-            <Tooltip content={<CustomTooltip totalCap={deviceTotalGb} />} />
+            <Tooltip content={<CustomTooltip totalCap={deviceTotalGb} unit={vramUnit} />} />
             {showH100Line && (
               <ReferenceLine
                 y={H100_LIMIT_GB}
@@ -303,7 +323,7 @@ export default function VramTimeSeries({
               strokeDasharray="4 4"
               strokeWidth={1}
               label={{
-                value: `MI300X ${deviceTotalGb.toFixed(0)} GB`,
+                value: `MI300X ${deviceTotalGb.toFixed(vramUnit === "GiB" ? 1 : 0)} ${vramUnit}`,
                 fill: "#22d3ee",
                 fontSize: 10,
                 position: "insideBottomRight",
@@ -311,13 +331,13 @@ export default function VramTimeSeries({
             />
             <Area
               type="monotone"
-              dataKey="used_gb"
+              dataKey="used_primary"
               stroke="#22d3ee"
               strokeWidth={2}
               fill="url(#vramGrad)"
               dot={false}
               activeDot={{ r: 3, fill: "#22d3ee" }}
-              name="VRAM Used (GB)"
+              name={`VRAM Used (${vramUnit})`}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -366,7 +386,7 @@ export default function VramTimeSeries({
             padding: "2px 10px",
           }}
         >
-          192 GB HBM3
+          192 {vramUnit} HBM3
         </span>
         <span
           style={{

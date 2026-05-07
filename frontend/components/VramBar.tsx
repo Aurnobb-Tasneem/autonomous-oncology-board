@@ -31,9 +31,13 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
     } catch {
       setVram({
         used_gb: 102.3,
-        total_gb: 192,
-        free_gb: 89.7,
-        percent_used: 53.4,
+        total_gb: 206,
+        free_gb: 103.7,
+        used_gib: 95.25,
+        total_gib: 192,
+        free_gib: 96.75,
+        percent_used: 49.7,
+        percent_gib: 49.7,
         source: "mock",
         model_breakdown: {
           gigapath_gb: 3.2,
@@ -62,9 +66,20 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
     return () => clearInterval(iv);
   }, [fetchVram]);
 
-  const totalCap = vram && vram.total_gb > 0 ? vram.total_gb : 192;
-  const used = vram?.used_gb ?? 0;
-  const mi300xPct = vram ? Math.min((used / totalCap) * 100, 100) : 0;
+  const useGib =
+    vram != null &&
+    typeof vram.total_gib === "number" &&
+    vram.total_gib > 0 &&
+    typeof vram.used_gib === "number";
+  const totalCap = useGib ? vram!.total_gib! : vram && vram.total_gb > 0 ? vram.total_gb : 192;
+  const used = useGib ? vram!.used_gib! : vram?.used_gb ?? 0;
+  const pctDisplay =
+    useGib && typeof vram!.percent_gib === "number"
+      ? vram!.percent_gib!
+      : vram
+        ? Math.min((used / totalCap) * 100, 100)
+        : 0;
+  const mi300xPct = vram ? Math.min(pctDisplay, 100) : 0;
 
   const compSum = useMemo(() => sumComponents(vram?.model_components ?? null), [vram?.model_components]);
 
@@ -104,10 +119,12 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
       <div style={{ marginBottom: compact ? "1rem" : "1.25rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
           <span style={{ fontSize: labelSize, fontWeight: 600, color: "var(--teal-light)" }}>
-            AMD MI300X · {totalCap.toFixed(0)} GB HBM3
+            AMD MI300X · {totalCap.toFixed(1)} {useGib ? "GiB" : "GB"} HBM3
           </span>
           <span style={{ fontSize: labelSize, color: "var(--text-muted)" }}>
-            {vram ? `${used.toFixed(1)} / ${totalCap.toFixed(1)} GB` : "—"}
+            {vram
+              ? `${used.toFixed(2)} / ${totalCap.toFixed(2)} ${useGib ? "GiB" : "GB"}`
+              : "—"}
           </span>
         </div>
 

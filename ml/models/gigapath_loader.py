@@ -78,12 +78,23 @@ def load_gigapath(
     import timm
     from huggingface_hub import login as hf_login
 
-    token = hf_token or os.getenv("HF_TOKEN", "")
+    raw = (hf_token if hf_token is not None else os.getenv("HF_TOKEN", "")) or ""
+    token = raw.strip()
     if token:
-        hf_login(token=token, add_to_git_credential=False)
-        log.info("GigaPath: authenticated with HF token")
+        try:
+            hf_login(token=token, add_to_git_credential=False)
+            log.info("GigaPath: authenticated with HF token")
+        except Exception as e:
+            log.warning(
+                "GigaPath: HF_TOKEN rejected (%s). Removing HF_TOKEN from the environment "
+                "so Hugging Face can fall back to `huggingface-cli login` cache or anonymous "
+                "access. Fix your token in .env if downloads fail.",
+                e,
+            )
+            os.environ.pop("HF_TOKEN", None)
+            token = ""
     else:
-        log.warning("GigaPath: no HF_TOKEN — anonymous access (may fail for gated model)")
+        log.warning("GigaPath: no HF_TOKEN — anonymous / CLI cache only (gated model may fail)")
 
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
