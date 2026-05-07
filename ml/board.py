@@ -44,7 +44,7 @@ from ml.agents.biomarker_specialist import BiomarkerSpecialistAgent, BiomarkerPa
 from ml.agents.treatment_specialist import TreatmentSpecialistAgent, TreatmentProposal
 from ml.agents.differential import DifferentialDxAgent, DifferentialResult
 from ml.agents.patient_summary import PatientSummaryAgent
-from ml.agents.trial_matcher import TrialMatcherAgent, TrialMatchResult
+from ml.agents.trial_matcher import TrialMatcherAgent, TrialMatch
 from ml.agents.counterfactual import CounterfactualAgent, CounterfactualPlan
 from ml.models.llm_client import OllamaClient
 from ml.rag.retriever import OncologyRetriever
