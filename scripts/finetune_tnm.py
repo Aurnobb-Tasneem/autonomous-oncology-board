@@ -21,7 +21,7 @@ Usage
 # Full options:
   python scripts/finetune_tnm.py \\
     --base_model meta-llama/Llama-3.1-8B-Instruct \\
-    --output_dir aob/ml/models/checkpoints/tnm_lora \\
+    --output_dir ml/models/checkpoints/tnm_lora \\
     --epochs 3 \\
     --lora_r 16 \\
     --lora_alpha 32 \\
@@ -719,7 +719,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--output_dir",
-        default="aob/ml/models/checkpoints/tnm_lora",
+        default="ml/models/checkpoints/tnm_lora",
         help="Directory to save the LoRA adapter weights and training report.",
     )
     p.add_argument("--epochs",      type=int,   default=1,    help="Training epochs.")

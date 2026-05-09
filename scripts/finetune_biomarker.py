@@ -487,7 +487,7 @@ def parse_args() -> argparse.Namespace:
         description="Fine-tune Llama-3.1-8B for oncology biomarker panel extraction on AMD MI300X."
     )
     p.add_argument("--base_model",  default="meta-llama/Llama-3.1-8B-Instruct")
-    p.add_argument("--output_dir",  default="aob/ml/models/checkpoints/biomarker_lora")
+    p.add_argument("--output_dir",  default="ml/models/checkpoints/biomarker_lora")
     p.add_argument("--epochs",      type=int,   default=1)
     p.add_argument("--max_steps",   type=int,   default=-1)
     p.add_argument("--batch_size",  type=int,   default=2)

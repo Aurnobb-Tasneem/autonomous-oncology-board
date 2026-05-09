@@ -37,17 +37,19 @@
 # Environment variables:
 #   SPECIALISTS_PORT         Port for the multi-LoRA vLLM server   [default: 8006]
 #   GPU_MEM_UTIL             vLLM GPU memory utilization fraction   [default: 0.12]
-#   TNM_LORA_DIR             Path to TNM adapter                    [default: aob/ml/models/checkpoints/tnm_lora]
-#   BIOMARKER_LORA_DIR       Path to biomarker adapter              [default: aob/ml/models/checkpoints/biomarker_lora]
-#   TREATMENT_LORA_DIR       Path to treatment adapter              [default: aob/ml/models/checkpoints/treatment_lora]
+#   TNM_LORA_DIR             Path to TNM adapter                    [default: ml/models/checkpoints/tnm_lora]
+#   BIOMARKER_LORA_DIR       Path to biomarker adapter              [default: ml/models/checkpoints/biomarker_lora]
+#   TREATMENT_LORA_DIR       Path to treatment adapter              [default: ml/models/checkpoints/treatment_lora]
+#
+#   (Repo root = directory containing ml/ and scripts/. Do not prefix with extra "aob/".)
 
 set -euo pipefail
 
 SPECIALISTS_PORT="${SPECIALISTS_PORT:-8006}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.12}"
-TNM_LORA_DIR="${TNM_LORA_DIR:-aob/ml/models/checkpoints/tnm_lora}"
-BIOMARKER_LORA_DIR="${BIOMARKER_LORA_DIR:-aob/ml/models/checkpoints/biomarker_lora}"
-TREATMENT_LORA_DIR="${TREATMENT_LORA_DIR:-aob/ml/models/checkpoints/treatment_lora}"
+TNM_LORA_DIR="${TNM_LORA_DIR:-ml/models/checkpoints/tnm_lora}"
+BIOMARKER_LORA_DIR="${BIOMARKER_LORA_DIR:-ml/models/checkpoints/biomarker_lora}"
+TREATMENT_LORA_DIR="${TREATMENT_LORA_DIR:-ml/models/checkpoints/treatment_lora}"
 BASE_MODEL="${BASE_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 
 # Linux hosts often have only `python3`; set PYTHON=/path/to/python to override.

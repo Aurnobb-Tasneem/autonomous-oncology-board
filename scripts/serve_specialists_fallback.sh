@@ -37,7 +37,7 @@ echo "Starting TNM specialist on :8006 ..."
 "$PYTHON_BIN" -m vllm.entrypoints.openai.api_server \
   --model "$BASE_MODEL" \
   --enable-lora \
-  --lora-modules tnm_specialist=aob/ml/models/checkpoints/tnm_lora \
+  --lora-modules tnm_specialist=ml/models/checkpoints/tnm_lora \
   --port 8006 --gpu-memory-utilization "$GPU_MEM_UTIL" \
   --dtype bfloat16 --max-model-len 2048 &
 
@@ -47,7 +47,7 @@ echo "Starting biomarker specialist on :8007 ..."
 "$PYTHON_BIN" -m vllm.entrypoints.openai.api_server \
   --model "$BASE_MODEL" \
   --enable-lora \
-  --lora-modules biomarker_specialist=aob/ml/models/checkpoints/biomarker_lora \
+  --lora-modules biomarker_specialist=ml/models/checkpoints/biomarker_lora \
   --port 8007 --gpu-memory-utilization "$GPU_MEM_UTIL" \
   --dtype bfloat16 --max-model-len 2048 &
 
@@ -57,7 +57,7 @@ echo "Starting treatment specialist on :8008 ..."
 "$PYTHON_BIN" -m vllm.entrypoints.openai.api_server \
   --model "$BASE_MODEL" \
   --enable-lora \
-  --lora-modules treatment_specialist=aob/ml/models/checkpoints/treatment_lora \
+  --lora-modules treatment_specialist=ml/models/checkpoints/treatment_lora \
   --port 8008 --gpu-memory-utilization "$GPU_MEM_UTIL" \
   --dtype bfloat16 --max-model-len 2048 &
 
