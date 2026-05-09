@@ -954,6 +954,12 @@ async def run_demo_case(case_name: str, background_tasks: BackgroundTasks):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to decode demo patches: {e}")
 
+    # Merge top-level tissue_type into metadata so board.py can use it as a
+    # classification hint (random GigaPath prototypes otherwise produce wrong labels).
+    case_metadata = dict(demo_data.get("metadata") or {})
+    if "tissue_type" not in case_metadata and demo_data.get("tissue_type"):
+        case_metadata["tissue_type"] = demo_data["tissue_type"]
+
     # Create and register job
     case_id = f"demo_{case_name}_{uuid.uuid4().hex[:6]}"
     job_id  = f"job_{uuid.uuid4().hex[:12]}"
@@ -962,7 +968,7 @@ async def run_demo_case(case_name: str, background_tasks: BackgroundTasks):
 
     thread = threading.Thread(
         target=_run_board_job,
-        args=(job, images_bytes, demo_data.get("metadata", {})),
+        args=(job, images_bytes, case_metadata),
         daemon=True,
         name=f"demo-{job_id}",
     )

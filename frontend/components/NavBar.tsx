@@ -64,7 +64,6 @@ export default function NavBar() {
         {[
           { href: "/specialists", label: "Specialists" },
           { href: "/benchmark", label: "Benchmark" },
-          { href: "/concurrent", label: "Concurrent" },
           { href: "/story", label: "Story" },
         ].map(({ href, label }) => (
           <Link

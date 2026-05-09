@@ -328,10 +328,11 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
         )}
       </div>
 
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+      {/* H100 OOM comparison */}
+      <div style={{ marginTop: compact ? "1rem" : "1.25rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
           <span style={{ fontSize: labelSize, fontWeight: 600, color: "var(--danger)" }}>
-            H100 SXM5 80 GB
+            NVIDIA H100 SXM5 · 80 GB limit
           </span>
           <span
             style={{
@@ -347,59 +348,75 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
             ✗ OOM
           </span>
         </div>
+
+        {/* H100 bar: filled to 80/192 of width, then red OOM stripe */}
         <div
           style={{
             height: barH,
-            background: "rgba(239,68,68,0.08)",
+            background: "rgba(239,68,68,0.06)",
             borderRadius: "10px",
             overflow: "hidden",
             border: "1px solid rgba(239,68,68,0.3)",
+            position: "relative",
+            display: "flex",
           }}
         >
+          {/* Filled portion that "fits" in H100 (≈42% = 80/192) */}
+          <div style={{ width: "41.67%", height: "100%", background: "linear-gradient(90deg,#dc2626,#ef4444)", flexShrink: 0 }} />
+          {/* Overflow hatching */}
           <div
             style={{
+              flex: 1,
               height: "100%",
-              width: "100%",
-              background: "linear-gradient(90deg, #dc2626, #ef4444)",
-              borderRadius: "10px",
+              background: "repeating-linear-gradient(45deg,rgba(239,68,68,0.25),rgba(239,68,68,0.25) 4px,transparent 4px,transparent 10px)",
+              borderLeft: "2px solid #ef4444",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
+              paddingLeft: "0.5rem",
             }}
           >
-            <span
-              style={{
-                fontSize: compact ? "0.64rem" : "0.7rem",
-                color: "white",
-                fontWeight: 700,
-                letterSpacing: "0.05em",
-              }}
-            >
-              OUT OF MEMORY — Cannot load full stack
+            <span style={{ fontSize: compact ? "0.6rem" : "0.66rem", color: "#fca5a5", fontWeight: 700, whiteSpace: "nowrap" }}>
+              +{used > 0 ? `${(used - 80).toFixed(1)} GiB overflow` : "≥5 GiB overflow"} — needs sharding
             </span>
           </div>
         </div>
-        <p style={{ fontSize: breakdownSize, color: "rgba(239,68,68,0.7)", marginTop: "0.3rem" }}>
-          Llama 70B stack (~40 GB weights est. in UI budget) + GigaPath + KV cache still exceeds a
-          single 80 GB H100 at full context without sharding.
-        </p>
+
+        {/* Math breakdown */}
+        <div
+          style={{
+            marginTop: "0.5rem",
+            padding: "0.5rem 0.75rem",
+            background: "rgba(239,68,68,0.05)",
+            border: "1px solid rgba(239,68,68,0.2)",
+            borderRadius: "8px",
+            fontSize: breakdownSize,
+            color: "rgba(252,165,165,0.85)",
+            lineHeight: 1.7,
+          }}
+        >
+          <strong style={{ color: "#fca5a5" }}>Why H100 fails:</strong>{" "}
+          Llama 3.3 70B (Q4_K_S) <span style={{ fontFamily: "monospace" }}>~40 GB</span>
+          {" "}+ GigaPath ViT-Giant <span style={{ fontFamily: "monospace" }}>~3 GB</span>
+          {" "}+ LoRA Specialists <span style={{ fontFamily: "monospace" }}>~22 GB</span>
+          {" "}+ KV Cache <span style={{ fontFamily: "monospace" }}>~20 GB</span>
+          {" "}= <span style={{ fontFamily: "monospace", color: "#f87171", fontWeight: 700 }}>~85 GB</span>
+          {" "}— 5 GB over the H100 hard limit, before a single token generates.{" "}
+          The MI300X has <span style={{ fontFamily: "monospace", color: "#4ade80", fontWeight: 700 }}>192 GB</span> — the only GPU where this architecture runs on a single card.
+        </div>
       </div>
 
       <div
         style={{
-          marginTop: "1rem",
-          paddingTop: "0.75rem",
+          marginTop: "0.85rem",
+          paddingTop: "0.65rem",
           borderTop: "1px solid var(--border)",
           fontSize: breakdownSize,
           color: "var(--text-muted)",
           textAlign: "center",
         }}
       >
-        Per-process VRAM from <span style={{ fontFamily: "monospace" }}>rocm-smi --showpids</span>
-        {useGib
-          ? " (driver reports decimal GB; the list above is shown in GiB to match the bar totals)."
-          : " (same decimal-GB scale as total used). "}
-        Estimated footprint rows use the declared Llama weight budget and process totals from the API.
+        Live VRAM from <span style={{ fontFamily: "monospace" }}>rocm-smi --showpids</span> · polling every 2s
+        {useGib ? " · values in GiB (1 GiB = 1024³ bytes)" : ""}
       </div>
     </div>
   );

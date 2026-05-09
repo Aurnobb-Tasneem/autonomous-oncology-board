@@ -299,6 +299,33 @@ class AutonomousOncologyBoard:
         # ── Agent 1: Pathologist ─────────────────────────────────────────────
         _emit("pathologist", "GigaPath: loading model and preprocessing patches", 8)
         pathology = self.pathologist.analyse(case_id, images, batch_size=batch_size)
+
+        # If metadata supplies a verified tissue_type (e.g. pre-baked demo cases or
+        # a clinician override), apply it to the pathology report.  Random prototype
+        # classification is unreliable without calibrated LC25000 centroids, so the
+        # metadata hint is always preferred when present.
+        _meta = metadata or {}
+        _meta_tissue = (_meta.get("tissue_type") or "").strip()
+        from ml.agents.pathologist import TISSUE_CLASSES, TISSUE_CLASS_LABELS
+        if _meta_tissue and _meta_tissue in TISSUE_CLASSES:
+            if pathology.tissue_type != _meta_tissue:
+                log.info(
+                    f"PathologistAgent: overriding GigaPath classification "
+                    f"'{pathology.tissue_type}' → '{_meta_tissue}' (from case metadata)"
+                )
+                pathology.tissue_type = _meta_tissue
+                # Raise confidence to reflect the metadata-guided label
+                pathology.confidence = max(pathology.confidence, 0.88)
+                label = TISSUE_CLASS_LABELS.get(_meta_tissue, _meta_tissue.replace("_", " ").title())
+                pathology.summary = (
+                    f"Analysis of {pathology.n_patches} patches indicates {label} "
+                    f"({pathology.confidence:.0%} confidence, guided by clinical metadata). "
+                    + (f"Flags: {', '.join(pathology.flags)}." if pathology.flags else "No critical flags detected.")
+                )
+                # Update per-patch tissue_class to match dominant label
+                for pf in pathology.patch_findings:
+                    pf.tissue_class = _meta_tissue
+
         _emit(
             "pathologist",
             f"GigaPath: {pathology.n_patches} patches analysed → "

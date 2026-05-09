@@ -6,7 +6,6 @@ import NavBar from "@/components/NavBar";
 import ConfidenceRing from "@/components/ConfidenceRing";
 import BiomarkerPanel from "@/components/BiomarkerPanel";
 import DebateTranscript from "@/components/DebateTranscript";
-import HeatmapViewer from "@/components/HeatmapViewer";
 import PfsChart from "@/components/PfsChart";
 import BoardMemoryPanel from "@/components/BoardMemoryPanel";
 import StatusBadge from "@/components/StatusBadge";
@@ -387,11 +386,6 @@ export default function ReportPage() {
 
           {/* RIGHT column */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-
-            {/* Heatmaps */}
-            <Section title="Attention Heatmaps" icon="🗺️">
-              <HeatmapViewer jobId={jobId} />
-            </Section>
 
             {/* Debate transcript */}
             {debates.length > 0 && (

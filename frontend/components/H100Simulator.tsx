@@ -17,7 +17,7 @@ interface Component {
 const COMPONENTS: Component[] = [
   { id: "gigapath", label: "GigaPath ViT-Giant", gb: 3, color: "#0d9488", required: true, description: "Vision Foundation Model (1.1B params, FP16)" },
   { id: "qwen_vl", label: "Qwen2.5-VL 7B", gb: 15, color: "#22c55e", required: false, description: "Second-opinion VLM (BF16)" },
-  { id: "llama_70b", label: "Llama 3.3 70B", gb: 70, color: "#0891b2", required: true, description: "Lead Oncologist LLM (FP8 quantized)" },
+  { id: "llama_70b", label: "Llama 3.3 70B", gb: 40, color: "#0891b2", required: true, description: "Lead Oncologist LLM (Q4_K_S quantized via Ollama, ~40 GB)" },
   { id: "lora_suite", label: "LoRA Suite ×3", gb: 16, color: "#38bdf8", required: false, description: "TNM + Biomarker + Treatment adapters (rank-16)" },
   { id: "kv_cache", label: "KV Cache (32k ctx)", gb: 30, color: "#7c3aed", required: false, description: "Transformer attention key-value cache" },
   { id: "qdrant", label: "Qdrant + Overhead", gb: 9, color: "#64748b", required: true, description: "Vector DB + ROCm runtime overhead" },
