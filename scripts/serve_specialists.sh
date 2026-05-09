@@ -50,6 +50,18 @@ BIOMARKER_LORA_DIR="${BIOMARKER_LORA_DIR:-aob/ml/models/checkpoints/biomarker_lo
 TREATMENT_LORA_DIR="${TREATMENT_LORA_DIR:-aob/ml/models/checkpoints/treatment_lora}"
 BASE_MODEL="${BASE_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 
+# Linux hosts often have only `python3`; set PYTHON=/path/to/python to override.
+if [ -n "${PYTHON:-}" ]; then
+  PYTHON_BIN="$PYTHON"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "ERROR: Neither python3 nor python is on PATH. Install Python or export PYTHON=/path/to/python"
+  exit 1
+fi
+
 # ── Validate adapter directories exist ───────────────────────────────────────
 for dir in "$TNM_LORA_DIR" "$BIOMARKER_LORA_DIR" "$TREATMENT_LORA_DIR"; do
     if [ ! -d "$dir" ]; then
@@ -85,7 +97,7 @@ echo "  'biomarker_specialist' → Biomarker panel JSON"
 echo "  'treatment_specialist' → Treatment plan JSON"
 echo ""
 
-python -m vllm.entrypoints.openai.api_server \
+"$PYTHON_BIN" -m vllm.entrypoints.openai.api_server \
   --model "$BASE_MODEL" \
   --enable-lora \
   --max-lora-rank 16 \

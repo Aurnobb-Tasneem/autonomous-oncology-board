@@ -22,8 +22,19 @@ set -euo pipefail
 BASE_MODEL="${BASE_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.05}"
 
+if [ -n "${PYTHON:-}" ]; then
+  PYTHON_BIN="$PYTHON"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "ERROR: Neither python3 nor python is on PATH. Set PYTHON=/path/to/python"
+  exit 1
+fi
+
 echo "Starting TNM specialist on :8006 ..."
-python -m vllm.entrypoints.openai.api_server \
+"$PYTHON_BIN" -m vllm.entrypoints.openai.api_server \
   --model "$BASE_MODEL" \
   --enable-lora \
   --lora-modules tnm_specialist=aob/ml/models/checkpoints/tnm_lora \
@@ -33,7 +44,7 @@ python -m vllm.entrypoints.openai.api_server \
 sleep 10
 
 echo "Starting biomarker specialist on :8007 ..."
-python -m vllm.entrypoints.openai.api_server \
+"$PYTHON_BIN" -m vllm.entrypoints.openai.api_server \
   --model "$BASE_MODEL" \
   --enable-lora \
   --lora-modules biomarker_specialist=aob/ml/models/checkpoints/biomarker_lora \
@@ -43,7 +54,7 @@ python -m vllm.entrypoints.openai.api_server \
 sleep 10
 
 echo "Starting treatment specialist on :8008 ..."
-python -m vllm.entrypoints.openai.api_server \
+"$PYTHON_BIN" -m vllm.entrypoints.openai.api_server \
   --model "$BASE_MODEL" \
   --enable-lora \
   --lora-modules treatment_specialist=aob/ml/models/checkpoints/treatment_lora \
