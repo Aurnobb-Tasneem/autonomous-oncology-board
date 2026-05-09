@@ -140,6 +140,27 @@ class OllamaClient:
             total_duration_ms=result.get("total_duration", 0) / 1_000_000,
         )
 
+    def generate(
+        self,
+        *,
+        user_prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 1024,
+    ) -> str:
+        """
+        Back-compat helper for agents that expect OpenAI-style kwargs.
+
+        Returns raw text only (not LLMResponse). Same backend as generate_sync.
+        """
+        r = self.generate_sync(
+            prompt=user_prompt,
+            system=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return r.text
+
     def generate_with_context(
         self,
         messages: list[dict[str, str]],

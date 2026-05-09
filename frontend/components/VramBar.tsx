@@ -19,44 +19,43 @@ function sumComponents(components: VramModelComponent[] | null | undefined): num
   return components.reduce((s, c) => s + Math.max(0, c.gb), 0);
 }
 
+function sumProcessRows(rows: { gb: number }[] | null | undefined): number {
+  if (!rows?.length) return 0;
+  return rows.reduce((s, r) => s + Math.max(0, r.gb), 0);
+}
+
+/** Backend reports per-process VRAM as decimal GB (bytes / 1e9). Convert to GiB for display next to rocm-smi totals. */
+function decimalGbToGib(gb: number): number {
+  return (gb * 1e9) / 1024 ** 3;
+}
+
+const PROCESS_BAR_COLORS: Record<string, string> = {
+  ollama: "#0891b2",
+  uvicorn: "#059669",
+  python: "#059669",
+  python3: "#059669",
+  vllm: "#7c3aed",
+  _other: "#64748b",
+};
+
+function processBarColor(processKey: string): string {
+  return PROCESS_BAR_COLORS[processKey] ?? "#14b8a6";
+}
+
 export default function VramBar({ compact = false }: { compact?: boolean }) {
   const [vram, setVram] = useState<VramInfo | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [animIn, setAnimIn] = useState(false);
 
   const fetchVram = useCallback(async () => {
     try {
       const v = await getVram();
       setVram(v);
+      setFetchError(null);
       setAnimIn(true);
-    } catch {
-      setVram({
-        used_gb: 102.3,
-        total_gb: 206,
-        free_gb: 103.7,
-        used_gib: 95.25,
-        total_gib: 192,
-        free_gib: 96.75,
-        percent_used: 49.7,
-        percent_gib: 49.7,
-        source: "mock",
-        model_breakdown: {
-          gigapath_gb: 3.2,
-          llama_gb: 140,
-          kv_cache_gb: 28,
-          runtime_overhead_gb: 4,
-        },
-        model_components: [
-          { id: "gigapath", label: "GigaPath (ViT, est.)", gb: 3.2 },
-          { id: "llama_weights", label: "Llama 70B weights (FP16 est.)", gb: 140 },
-          { id: "kv_cache", label: "KV cache (inside Ollama, est.)", gb: 28 },
-          { id: "runtime", label: "API / torch overhead (est.)", gb: 4 },
-        ],
-        processes_display: [
-          { process: "ollama", label: "Ollama — Llama 70B + KV cache", gb: 168 },
-          { process: "uvicorn", label: "FastAPI / GigaPath (uvicorn)", gb: 22 },
-        ],
-      });
-      setAnimIn(true);
+    } catch (e) {
+      setVram(null);
+      setFetchError(e instanceof Error ? e.message : "VRAM request failed");
     }
   }, []);
 
@@ -81,7 +80,14 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
         : 0;
   const mi300xPct = vram ? Math.min(pctDisplay, 100) : 0;
 
+  const useMeasuredBar =
+    vram?.source === "rocm-smi" && (vram.processes_display?.length ?? 0) > 0;
+  const procSum = useMemo(
+    () => sumProcessRows(vram?.processes_display ?? null),
+    [vram?.processes_display],
+  );
   const compSum = useMemo(() => sumComponents(vram?.model_components ?? null), [vram?.model_components]);
+  const barSegmentSum = useMeasuredBar ? procSum : compSum;
 
   const pad = compact ? "1rem" : "1.5rem";
   const headerMb = compact ? "0.85rem" : "1.25rem";
@@ -110,11 +116,39 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
                 marginLeft: "0.25rem",
               }}
             >
-              (demo / offline)
+              (backend mock — rocm-smi unavailable)
+            </span>
+          )}
+          {vram?.source === "rocm-smi" && (
+            <span
+              style={{
+                fontSize: compact ? "0.66rem" : "0.7rem",
+                color: "var(--teal-light)",
+                marginLeft: "0.25rem",
+              }}
+            >
+              rocm-smi
             </span>
           )}
         </div>
       </div>
+
+      {fetchError && (
+        <div
+          style={{
+            marginBottom: "0.75rem",
+            padding: "0.5rem 0.65rem",
+            borderRadius: 8,
+            fontSize: breakdownSize,
+            color: "#fecaca",
+            background: "rgba(127,29,29,0.35)",
+            border: "1px solid rgba(248,113,113,0.4)",
+          }}
+        >
+          VRAM API unreachable: {fetchError}. Check Next.js <code style={{ fontSize: "0.85em" }}>BACKEND_INTERNAL_URL</code> /{" "}
+          <code style={{ fontSize: "0.85em" }}>NEXT_PUBLIC_API_URL</code>.
+        </div>
+      )}
 
       <div style={{ marginBottom: compact ? "1rem" : "1.25rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
@@ -150,14 +184,30 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
               overflow: "hidden",
             }}
           >
-            {compSum > 0 &&
+            {barSegmentSum > 0 &&
+              useMeasuredBar &&
+              vram!.processes_display!.map((row) => (
+                <div
+                  key={row.process}
+                  title={`${row.label}: ${useGib ? decimalGbToGib(row.gb).toFixed(2) : row.gb.toFixed(1)} ${useGib ? "GiB" : "GB"} (measured)`}
+                  style={{
+                    height: "100%",
+                    width: `${(Math.max(0, row.gb) / barSegmentSum) * 100}%`,
+                    background: processBarColor(row.process),
+                    opacity: 0.92,
+                    transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)",
+                  }}
+                />
+              ))}
+            {barSegmentSum > 0 &&
+              !useMeasuredBar &&
               components.map((c) => (
                 <div
                   key={c.id}
                   title={`${c.label}: ${c.gb.toFixed(1)} GB (est.)`}
                   style={{
                     height: "100%",
-                    width: `${(Math.max(0, c.gb) / compSum) * 100}%`,
+                    width: `${(Math.max(0, c.gb) / barSegmentSum) * 100}%`,
                     background: componentColor(c.id),
                     opacity: 0.92,
                     transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)",
@@ -167,7 +217,7 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
 
-        {compSum > 0 && (
+        {barSegmentSum > 0 && useMeasuredBar && (
           <div
             style={{
               fontSize: compact ? "0.62rem" : "0.65rem",
@@ -175,7 +225,18 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
               marginTop: "0.28rem",
             }}
           >
-            Strip inside bar: estimated split (GigaPath · Llama weights · KV · overhead)
+            Bar segments: measured VRAM per GPU process (<span style={{ fontFamily: "monospace" }}>rocm-smi --showpids</span>)
+          </div>
+        )}
+        {barSegmentSum > 0 && !useMeasuredBar && compSum > 0 && (
+          <div
+            style={{
+              fontSize: compact ? "0.62rem" : "0.65rem",
+              color: "var(--text-muted)",
+              marginTop: "0.28rem",
+            }}
+          >
+            Strip inside bar: estimated split (no per-process sample — GigaPath · Llama · KV · overhead)
           </div>
         )}
 
@@ -213,7 +274,7 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
                 >
                   <span style={{ color: "var(--text-muted)" }}>{row.label}</span>
                   <span style={{ fontFamily: "monospace", color: "var(--teal-light)", fontWeight: 600 }}>
-                    {row.gb.toFixed(1)} GB
+                    {useGib ? `${decimalGbToGib(row.gb).toFixed(2)} GiB` : `${row.gb.toFixed(1)} GB`}
                   </span>
                 </div>
               ))}
@@ -334,8 +395,11 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
           textAlign: "center",
         }}
       >
-        Process rows come from <span style={{ fontFamily: "monospace" }}>rocm-smi --showpids</span>. Model
-        lines use declared Llama weight budget + measured Ollama RSS for KV estimate.
+        Per-process VRAM from <span style={{ fontFamily: "monospace" }}>rocm-smi --showpids</span>
+        {useGib
+          ? " (driver reports decimal GB; the list above is shown in GiB to match the bar totals)."
+          : " (same decimal-GB scale as total used). "}
+        Estimated footprint rows use the declared Llama weight budget and process totals from the API.
       </div>
     </div>
   );
