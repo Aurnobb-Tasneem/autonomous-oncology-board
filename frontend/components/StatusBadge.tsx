@@ -36,8 +36,9 @@ const CONFIGS: Record<
   },
 };
 
-export default function StatusBadge({ status }: { status: JobStatus }) {
-  const cfg = CONFIGS[status];
+export default function StatusBadge({ status }: { status: JobStatus | undefined }) {
+  const safe = status && status in CONFIGS ? status : "done";
+  const cfg = CONFIGS[safe];
   return (
     <span
       style={{
@@ -59,7 +60,7 @@ export default function StatusBadge({ status }: { status: JobStatus }) {
           height: "6px",
           borderRadius: "50%",
           background: cfg.dot,
-          animation: status === "running" ? "pulse-dot 1.8s ease-in-out infinite" : "none",
+          animation: safe === "running" ? "pulse-dot 1.8s ease-in-out infinite" : "none",
         }}
       />
       {cfg.label}

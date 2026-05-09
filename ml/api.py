@@ -608,7 +608,11 @@ async def get_report(job_id: str):
     if job.status == JobStatus.FAILED:
         raise HTTPException(status_code=500, detail=job.error)
 
-    return job.result.to_dict()
+    # BoardResult.to_dict() omits job envelope fields the Next.js report page expects.
+    payload = job.result.to_dict()
+    payload["job_id"] = job.job_id
+    payload["status"] = job.status.value
+    return payload
 
 
 @app.get("/cases")

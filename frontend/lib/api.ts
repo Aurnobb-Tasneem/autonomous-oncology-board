@@ -1,7 +1,13 @@
 // lib/api.ts — Typed API client for AOB backend
 
-// Proxy all requests through Next.js to avoid Mixed Content (HTTPS -> HTTP) and CORS issues.
-const BASE = "/api/proxy";
+/**
+ * All API calls go to the Next.js route `app/api/proxy/[...path]/route.ts`, which forwards
+ * to FastAPI using `BACKEND_INTERNAL_URL` or `NEXT_PUBLIC_API_URL` at **request time** (so
+ * `next build` + `next start` still hits the right host after you edit `.env.local`).
+ */
+export function getApiBase(): string {
+  return "/api/proxy";
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -216,17 +222,17 @@ export interface SseStep {
 // ── API Functions ──────────────────────────────────────────────────────────
 
 export async function getHealth(): Promise<{ status: string; ollama: string; specialists_status?: string }> {
-  const res = await fetch(`${BASE}/health`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/health`, { cache: "no-store" });
   return res.json();
 }
 
 export async function getSpecialistsHealth(): Promise<SpecialistsHealth> {
-  const res = await fetch(`${BASE}/health/specialists`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/health/specialists`, { cache: "no-store" });
   return res.json();
 }
 
 export async function getVram(): Promise<VramInfo> {
-  const res = await fetch(`${BASE}/api/vram`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/api/vram`, { cache: "no-store" });
   if (!res.ok) throw new Error(`VRAM ${res.status}`);
   return res.json();
 }
@@ -251,19 +257,19 @@ export interface VramHistoryResponse {
 }
 
 export async function getVramHistory(seconds: number): Promise<VramHistoryResponse> {
-  const res = await fetch(`${BASE}/api/vram/history?seconds=${seconds}`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/api/vram/history?seconds=${seconds}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`VRAM history ${res.status}`);
   return res.json();
 }
 
 export async function getDemoCases(): Promise<DemoCase[]> {
-  const res = await fetch(`${BASE}/demo/cases`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/demo/cases`, { cache: "no-store" });
   const data = await res.json();
   return data.cases ?? [];
 }
 
 export async function runDemoCase(caseName: string): Promise<AnalyzeResponse> {
-  const res = await fetch(`${BASE}/demo/run/${caseName}`, {
+  const res = await fetch(`${getApiBase()}/demo/run/${encodeURIComponent(caseName)}`, {
     method: "POST",
     cache: "no-store",
   });
@@ -287,7 +293,7 @@ export interface JobStatusPayload {
 }
 
 export async function getJobStatus(jobId: string): Promise<JobStatusPayload> {
-  const res = await fetch(`${BASE}/status/${jobId}`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/status/${encodeURIComponent(jobId)}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Status ${res.status}`);
   return res.json();
 }
@@ -299,7 +305,7 @@ export async function analyzeImages(
   const formData = new FormData();
   images.forEach((img) => formData.append("files", img));
   if (metadata) formData.append("metadata", JSON.stringify(metadata));
-  const res = await fetch(`${BASE}/analyze`, {
+  const res = await fetch(`${getApiBase()}/analyze`, {
     method: "POST",
     body: formData,
     cache: "no-store",
@@ -308,14 +314,84 @@ export async function analyzeImages(
   return res.json();
 }
 
-export async function getReport(jobId: string): Promise<BoardResult> {
-  const res = await fetch(`${BASE}/report/${jobId}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Report fetch failed: ${res.status}`);
-  return res.json();
+/** One shot — use when you implement your own polling. */
+export async function fetchReportOnce(
+  jobId: string
+): Promise<
+  | { ok: true; data: BoardResult }
+  | { ok: false; pending: true; message?: string }
+  | { ok: false; pending: false; error: string }
+> {
+  const base = getApiBase();
+  const id = encodeURIComponent(jobId);
+  const res = await fetch(`${base}/report/${id}`, { cache: "no-store" });
+  if (res.status === 202) {
+    const j = (await res.json().catch(() => ({}))) as { status?: string; message?: string };
+    return { ok: false, pending: true, message: j.message ?? "Still processing" };
+  }
+  if (res.status === 404) {
+    let detail =
+      "Job not found — check the URL or run the case again (the API may have restarted and lost in-memory jobs).";
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      if (j.detail != null)
+        detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      /* ignore */
+    }
+    return { ok: false, pending: false, error: detail };
+  }
+  if (res.status === 500) {
+    let detail = "Pipeline failed";
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      if (j.detail != null) detail = String(j.detail);
+    } catch {
+      /* ignore */
+    }
+    return { ok: false, pending: false, error: detail };
+  }
+  if (!res.ok) {
+    let extra = "";
+    try {
+      const j = (await res.json()) as { detail?: unknown; backend?: string; path?: string };
+      if (j.detail != null) extra = `: ${j.detail}`;
+      else if (j.backend) extra = ` (proxy → ${j.backend}/${j.path ?? ""})`;
+    } catch {
+      /* ignore */
+    }
+    return { ok: false, pending: false, error: `Report fetch failed: ${res.status}${extra}` };
+  }
+  const data = (await res.json()) as BoardResult;
+  return { ok: true, data };
+}
+
+/**
+ * GET /report/{job_id} — polls while the backend returns 202 (still running).
+ */
+export async function getReport(
+  jobId: string,
+  opts?: { pollMs?: number; maxWaitMs?: number }
+): Promise<BoardResult> {
+  const pollMs = opts?.pollMs ?? 1500;
+  const maxWaitMs = opts?.maxWaitMs ?? 600_000;
+  const deadline = Date.now() + maxWaitMs;
+  for (;;) {
+    const r = await fetchReportOnce(jobId);
+    if (r.ok) return r.data;
+    if (r.pending) {
+      if (Date.now() > deadline) {
+        throw new Error("Report still processing — refresh this page in a moment.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      continue;
+    }
+    throw new Error(r.error);
+  }
 }
 
 export async function getHeatmaps(jobId: string): Promise<{ heatmaps: string[]; pending: boolean }> {
-  const res = await fetch(`${BASE}/heatmaps/${jobId}`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/heatmaps/${encodeURIComponent(jobId)}`, { cache: "no-store" });
   if (res.status === 202) return { heatmaps: [], pending: true };
   if (!res.ok) return { heatmaps: [], pending: false };
   const data = await res.json();
@@ -325,7 +401,7 @@ export async function getHeatmaps(jobId: string): Promise<{ heatmaps: string[]; 
 }
 
 export async function getMemoryCases(): Promise<SimilarCase[]> {
-  const res = await fetch(`${BASE}/memory/cases`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/memory/cases`, { cache: "no-store" });
   const data = await res.json();
   return data.cases ?? [];
 }
@@ -336,7 +412,7 @@ export function streamJob(
   onDone: () => void,
   onError: (err: string) => void
 ): () => void {
-  const es = new EventSource(`${BASE}/stream/${jobId}`);
+  const es = new EventSource(`${getApiBase()}/stream/${encodeURIComponent(jobId)}`);
   let finished = false;
 
   const handleDone = () => {
@@ -444,7 +520,7 @@ export interface CounterfactualResponse {
 
 export async function getTrainingReports(): Promise<TrainingReport[]> {
   try {
-    const res = await fetch(`${BASE}/api/training/reports`, { cache: "no-store" });
+    const res = await fetch(`${getApiBase()}/api/training/reports`, { cache: "no-store" });
     if (!res.ok) return [];
     const data = await res.json();
     return data.reports ?? data ?? [];
@@ -454,7 +530,7 @@ export async function getTrainingReports(): Promise<TrainingReport[]> {
 }
 
 export async function runConcurrent(cases: string[]): Promise<ConcurrentRunResponse> {
-  const res = await fetch(`${BASE}/api/concurrent/run`, {
+  const res = await fetch(`${getApiBase()}/api/concurrent/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cases }),
@@ -468,7 +544,7 @@ export async function runCounterfactual(
   jobId: string,
   hypothesis: string
 ): Promise<CounterfactualResponse> {
-  const res = await fetch(`${BASE}/api/counterfactual/${jobId}`, {
+  const res = await fetch(`${getApiBase()}/api/counterfactual/${encodeURIComponent(jobId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ hypothesis }),

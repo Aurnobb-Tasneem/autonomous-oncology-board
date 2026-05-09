@@ -165,6 +165,8 @@ docker exec "$CONTAINER" bash -c "
   export PYTHONPATH=/workspace/aob &&
   export OLLAMA_HOST=${OLLAMA_HOST} &&
   export OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.3:70b-instruct-q4_K_S} &&
+  export OLLAMA_REQUEST_TIMEOUT=${OLLAMA_REQUEST_TIMEOUT:-600} &&
+  export OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m} &&
   export HF_TOKEN=${HF_TOKEN:-''} &&
   python scripts/smoke_test.py
 " && echo "    Smoke test PASSED" || echo "    WARNING: Smoke test had issues — check output above"
@@ -182,6 +184,8 @@ docker exec -d "$CONTAINER" bash -c "
   export PYTHONPATH=/workspace/aob &&
   export OLLAMA_HOST=${OLLAMA_HOST} &&
   export OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.3:70b-instruct-q4_K_S} &&
+  export OLLAMA_REQUEST_TIMEOUT=${OLLAMA_REQUEST_TIMEOUT:-600} &&
+  export OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m} &&
   export HF_TOKEN=${HF_TOKEN:-''} &&
   export QWEN_VL_MODEL=${QWEN_VL_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct} &&
   export TNM_VLLM_BASE_URL=${TNM_VLLM_BASE_URL:-http://localhost:8006/v1} &&

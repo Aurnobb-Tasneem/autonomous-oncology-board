@@ -7,11 +7,16 @@ This is the judge-optimized UI for the Autonomous Oncology Board demo. It connec
 - A running backend at `http://localhost:8000` (or your AMD host)
 
 ## Environment
-Create a `.env.local` file in this folder:
+Create a `.env.local` file in this folder (read when you start `next dev` / `next start`):
 
 ```
+# Where FastAPI lives — used by app/api/proxy/[...path]/route.ts at request time
 NEXT_PUBLIC_API_URL=http://<AMD_HOST>:8000
+# Or (server-only name, same effect if set):
+# BACKEND_INTERNAL_URL=http://<AMD_HOST>:8000
 ```
+
+All browser API calls use **`/api/proxy/...`** on the Next server, which forwards to that URL. Restart Next after changing env.
 
 ## Run locally
 

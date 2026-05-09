@@ -26,8 +26,21 @@ function Section({ title, children, icon }: { title: string; children: React.Rea
   );
 }
 
+function normalizeJobId(raw: string | string[] | undefined): string | null {
+  if (raw == null) return null;
+  let s = String(Array.isArray(raw) ? raw[0] : raw).trim();
+  if (!s) return null;
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    /* keep raw segment */
+  }
+  return s || null;
+}
+
 export default function ReportPage() {
-  const { jobId } = useParams<{ jobId: string }>();
+  const params = useParams<{ jobId: string }>();
+  const jobId = normalizeJobId(params?.jobId as string | string[] | undefined);
   const router = useRouter();
   const [result, setResult] = useState<BoardResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,18 +49,22 @@ export default function ReportPage() {
   const [reportTab, setReportTab] = useState<"clinical" | "patient">("clinical");
 
   useEffect(() => {
-    if (!jobId) return;
     const load = async () => {
+      if (!jobId) {
+        setError("Invalid report link — missing job id.");
+        setLoading(false);
+        return;
+      }
       try {
         const r = await getReport(jobId);
         setResult(r);
       } catch (e) {
-        setError("Failed to load report");
+        setError(e instanceof Error ? e.message : "Failed to load report");
       } finally {
         setLoading(false);
       }
     };
-    load();
+    void load();
   }, [jobId]);
 
   if (loading) {
@@ -70,6 +87,19 @@ export default function ReportPage() {
         <div style={{ maxWidth: "600px", margin: "4rem auto", textAlign: "center", color: "var(--danger)", padding: "2rem" }}>
           <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>⚠️</div>
           <div>{error ?? "Report not found"}</div>
+          <button className="btn-ghost" style={{ marginTop: "1.5rem", padding: "0.5rem 1.5rem" }} onClick={() => router.push("/")}>← Back to Home</button>
+        </div>
+      </>
+    );
+  }
+
+  if (!jobId) {
+    return (
+      <>
+        <NavBar />
+        <div style={{ maxWidth: "600px", margin: "4rem auto", textAlign: "center", color: "var(--danger)", padding: "2rem" }}>
+          <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>⚠️</div>
+          <div>Invalid report link — missing job id.</div>
           <button className="btn-ghost" style={{ marginTop: "1.5rem", padding: "0.5rem 1.5rem" }} onClick={() => router.push("/")}>← Back to Home</button>
         </div>
       </>

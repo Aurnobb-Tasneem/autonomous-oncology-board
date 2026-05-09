@@ -35,6 +35,21 @@ def _default_ollama_model() -> str:
     return v.strip() if v and v.strip() else "llama3.3:70b-instruct-q4_K_S"
 
 
+def _default_ollama_timeout_s() -> int:
+    """HTTP read timeout for /api/generate and /api/chat (70B + long prompts need headroom)."""
+    raw = os.getenv("OLLAMA_REQUEST_TIMEOUT", "600")
+    try:
+        return max(30, int(raw))
+    except ValueError:
+        return 600
+
+
+def _ollama_keep_alive() -> str:
+    """Keep model loaded between board steps (Ollama duration string, e.g. 30m)."""
+    v = os.getenv("OLLAMA_KEEP_ALIVE", "30m").strip()
+    return v if v else "30m"
+
+
 # ── Defaults ────────────────────────────────────────────────────────────────
 DEFAULT_HOST  = _default_ollama_host()
 DEFAULT_MODEL = _default_ollama_model()
@@ -61,15 +76,15 @@ class OllamaClient:
         self,
         host: Optional[str] = None,
         model: Optional[str] = None,
-        timeout: int = 180,
+        timeout: Optional[int] = None,
     ):
         # Treat None / blank like “unset” so explicit host=None never overrides DEFAULT_*.
         _h = (host or "").strip() or DEFAULT_HOST
         _m = (model or "").strip() or DEFAULT_MODEL
         self.host    = _h.rstrip("/")
         self.model   = _m
-        self.timeout = timeout
-        log.info(f"OllamaClient: host={self.host}  model={self.model}")
+        self.timeout = timeout if timeout is not None else _default_ollama_timeout_s()
+        log.info(f"OllamaClient: host={self.host}  model={self.model}  timeout={self.timeout}s")
 
     # ── Health check ────────────────────────────────────────────────────────
     def ping(self) -> bool:
@@ -110,6 +125,7 @@ class OllamaClient:
             "model":  self.model,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": _ollama_keep_alive(),
             "options": {
                 "temperature":  temperature,
                 "num_predict":  max_tokens,
@@ -182,6 +198,7 @@ class OllamaClient:
             "model":    self.model,
             "messages": messages,
             "stream":   False,
+            "keep_alive": _ollama_keep_alive(),
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
