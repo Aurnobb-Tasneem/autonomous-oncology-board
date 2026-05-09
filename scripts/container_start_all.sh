@@ -56,44 +56,33 @@ echo "  Ollama + FastAPI + Specialists — all on localhost"
 echo "============================================================"
 echo ""
 
-# ── 1. Install Ollama if missing ─────────────────────────────────────────────
-if ! command -v ollama &>/dev/null; then
-  echo "--> Installing Ollama (ROCm-native)..."
-  # zstd is required by the Ollama installer since 0.6+
+# ── 1. Ensure Ollama is reachable ────────────────────────────────────────────
+# With --network host, the container shares the host's network namespace.
+# If Ollama is already running on the HOST at 127.0.0.1:OLLAMA_PORT it is
+# reachable here without any additional install.
+echo "--> Checking Ollama at http://127.0.0.1:${OLLAMA_PORT}..."
+if curl -fsS --max-time 5 http://127.0.0.1:${OLLAMA_PORT}/api/tags &>/dev/null; then
+  echo "    Ollama reachable (host Ollama via shared network namespace) ✓"
+else
+  # Not reachable — try to install + start inside the container.
+  echo "    Not reachable. Attempting to install Ollama inside the container..."
   if ! command -v zstd &>/dev/null; then
-    echo "    Installing zstd (required by Ollama installer)..."
-    apt-get install -y -qq zstd 2>/dev/null || true
+    apt-get update -qq && apt-get install -y -qq zstd 2>/dev/null || \
+      echo "    WARN: could not install zstd — Ollama install may fail"
   fi
   curl -fsSL https://ollama.com/install.sh | sh
-  echo "    OK"
-else
-  echo "--> Ollama: $(ollama --version 2>&1 | head -1)"
-fi
-
-# ── 2. Start Ollama server (if not already running) ──────────────────────────
-if ! pgrep -x ollama &>/dev/null; then
-  echo "--> Starting Ollama server on 127.0.0.1:${OLLAMA_PORT}..."
+  echo "--> Starting Ollama server inside container..."
   OLLAMA_HOST="127.0.0.1:${OLLAMA_PORT}" nohup ollama serve \
     > /var/log/ollama_container.log 2>&1 &
   sleep 5
-else
-  echo "--> Ollama already running (PID $(pgrep -x ollama | head -1))"
-fi
-
-# ── 3. Pull model if missing ─────────────────────────────────────────────────
-echo "--> Checking model: $OLLAMA_MODEL"
-if ! OLLAMA_HOST=http://127.0.0.1:${OLLAMA_PORT} ollama list 2>/dev/null | grep -q "${OLLAMA_MODEL%%:*}"; then
-  echo "    Pulling ${OLLAMA_MODEL} (may take a few minutes)..."
-  OLLAMA_HOST=http://127.0.0.1:${OLLAMA_PORT} ollama pull "$OLLAMA_MODEL"
-else
-  echo "    Model already present."
-fi
-
-# Quick ping
-if curl -fsS --max-time 5 http://127.0.0.1:${OLLAMA_PORT}/api/tags &>/dev/null; then
-  echo "--> Ollama: reachable at http://127.0.0.1:${OLLAMA_PORT} ✓"
-else
-  echo "    WARN: Ollama not responding — check /var/log/ollama_container.log"
+  if curl -fsS --max-time 10 http://127.0.0.1:${OLLAMA_PORT}/api/tags &>/dev/null; then
+    echo "    Ollama started inside container ✓"
+    echo "--> Pulling model: $OLLAMA_MODEL"
+    OLLAMA_HOST=http://127.0.0.1:${OLLAMA_PORT} ollama pull "$OLLAMA_MODEL"
+  else
+    echo "    ERROR: Ollama still not reachable. Check /var/log/ollama_container.log" >&2
+    exit 1
+  fi
 fi
 
 # ── 4. Start vLLM Specialists (if adapters present) ──────────────────────────
