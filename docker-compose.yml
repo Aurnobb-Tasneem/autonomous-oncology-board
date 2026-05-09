@@ -10,6 +10,7 @@
 # The project went FastAPI-direct on Day 4 — there is NO NestJS gateway.
 #
 # Usage:
+#   bash scripts/stack_up.sh       # AMD host: Qdrant + docker start rocm2|rocm + deploy FastAPI
 #   docker compose up              # Start Qdrant + Next.js frontend dev server
 #                                  # (FastAPI ML API runs on the AMD MI300X host, not in Compose)
 #   docker compose up qdrant       # Start Qdrant only (for RAG dev)

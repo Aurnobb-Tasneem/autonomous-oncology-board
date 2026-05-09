@@ -13,12 +13,13 @@ PYTHON     := python3
 PYTHONPATH := $(shell pwd)
 PORT       := 8000
 
-.PHONY: help smoke api index vram lint test clean
+.PHONY: help stack-up smoke api index vram lint test clean
 
 help:
 	@echo ""
 	@echo "  AOB — Autonomous Oncology Board"
 	@echo ""
+	@echo "  make stack-up Start Qdrant + ROCm container + deploy FastAPI (host; see scripts/stack_up.sh)"
 	@echo "  make smoke    Run smoke test (validates GigaPath + Llama in VRAM)"
 	@echo "  make api      Start FastAPI server on port $(PORT)"
 	@echo "  make index    Index oncology corpus into Qdrant"
@@ -27,6 +28,9 @@ help:
 	@echo "  make test     Run pytest"
 	@echo "  make clean    Remove __pycache__ and .pyc files"
 	@echo ""
+
+stack-up:
+	bash scripts/stack_up.sh
 
 smoke:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/smoke_test.py
