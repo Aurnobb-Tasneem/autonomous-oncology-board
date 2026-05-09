@@ -31,8 +31,8 @@ def _default_ollama_host() -> str:
 
 
 def _default_ollama_model() -> str:
-    v = os.getenv("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16")
-    return v.strip() if v and v.strip() else "llama3.3:70b-instruct-fp16"
+    v = os.getenv("OLLAMA_MODEL", "llama3.3:70b-instruct-q4_K_S")
+    return v.strip() if v and v.strip() else "llama3.3:70b-instruct-q4_K_S"
 
 
 # ── Defaults ────────────────────────────────────────────────────────────────

@@ -295,7 +295,7 @@ async def lifespan(app: FastAPI):
     _board = AutonomousOncologyBoard(
         hf_token=_env_nonempty("HF_TOKEN", ""),
         ollama_host=_env_nonempty("OLLAMA_HOST", "http://localhost:11434"),
-        ollama_model=_env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16"),
+        ollama_model=_env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-q4_K_S"),
     )
     log.info("AOB API: board initialised — ready to accept cases")
 
@@ -462,7 +462,7 @@ async def health():
     return {
         "status":             "ok",
         "ollama":             "connected" if llm_ok else "unreachable",
-        "model":              _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16"),
+        "model":              _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-q4_K_S"),
         "board_ready":        _board is not None,
         "active_jobs":        len([j for j in _jobs.values() if j.status == JobStatus.RUNNING]),
         "specialists_status": spec_status["status"],
@@ -772,8 +772,8 @@ async def get_vram():
     if _mw:
         LLAMA_70B_WEIGHTS_GB = float(_mw)
     else:
-        _om = _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16").lower()
-        LLAMA_70B_WEIGHTS_GB = 140.0 if "fp16" in _om else 40.0
+        # Dashboard / KV-math budget: ~40 GB (demo); override via VRAM_LLAMA_WEIGHTS_GB.
+        LLAMA_70B_WEIGHTS_GB = 40.0
 
     uvicorn_gb = (
         processes.get("uvicorn", 0.0)
@@ -870,7 +870,7 @@ async def get_vram():
         "model_components": model_components,
         "processes_display": processes_display if processes_display else None,
         "unattributed_gpu_gb": unattributed_gpu_gb,
-        "ollama_model": _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16"),
+        "ollama_model": _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-q4_K_S"),
         "processes": {k: v for k, v in processes.items()} if processes else None,
         "rocm_gpu_adapters_summed": rocm_gpu_adapters_summed,
         "hardware": "AMD Instinct MI300X · 192 GB HBM3",

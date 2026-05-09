@@ -5,7 +5,7 @@
 
 ### PRE-RECORDING CHECKLIST
 - [ ] AOB backend running (`python -m aob.ml.api`)
-- [ ] Ollama serving `llama3.3:70b-instruct-fp16` (`ollama serve`)
+- [ ] Ollama serving `llama3.3:70b-instruct-q4_K_S` (`ollama serve`)
 - [ ] vLLM serving specialists (`./scripts/serve_specialists.sh`)
 - [ ] Frontend open at `http://localhost:8000`
 - [ ] VRAM dashboard widget visible (baseline ~88 GB)

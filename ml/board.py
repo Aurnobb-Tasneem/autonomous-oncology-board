@@ -218,8 +218,7 @@ class AutonomousOncologyBoard:
 
     All agents share the same MI300X VRAM pool:
       - GigaPath (Pathologist) holds ~3 GB in the Docker container
-      - Llama 3.3 70B FP16 (Researcher + Oncologist) ~140 GB weights via Ollama on HOST
-        (set OLLAMA_MODEL=llama3.3:70b-instruct-fp16); KV cache adds more on top
+      - Llama 3.3 70B Q4_K_S (Researcher + Oncologist) via Ollama on HOST (~40 GB weights; KV cache adds more on top)
       - Both visible in rocm-smi (192 GB unified HBM3)
 
     This design is physically impossible on a single NVIDIA H100 (80 GB VRAM).

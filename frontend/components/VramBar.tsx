@@ -380,8 +380,8 @@ export default function VramBar({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
         <p style={{ fontSize: breakdownSize, color: "rgba(239,68,68,0.7)", marginTop: "0.3rem" }}>
-          FP16 70B weights (~140 GB) + GigaPath + KV cache exceeds a single 80 GB H100 without
-          multi-GPU sharding.
+          Llama 70B stack (~40 GB weights est. in UI budget) + GigaPath + KV cache still exceeds a
+          single 80 GB H100 at full context without sharding.
         </p>
       </div>
 

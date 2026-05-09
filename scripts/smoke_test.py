@@ -54,7 +54,7 @@ log = logging.getLogger("smoke_test")
 # Config — override via env vars                                               #
 # --------------------------------------------------------------------------- #
 GIGAPATH_MODEL_ID = os.getenv("GIGAPATH_MODEL", "prov-gigapath/prov-gigapath")
-OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL",   "llama3.3:70b-instruct-fp16")
+OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL",   "llama3.3:70b-instruct-q4_K_S")
 OLLAMA_HOST       = os.getenv("OLLAMA_HOST",    "http://localhost:11434")   # Set OLLAMA_HOST env var for Docker deployments
 HF_TOKEN          = os.getenv("HF_TOKEN", "")
 VRAM_LOG_PATH     = LOG_DIR / "smoke_vram.log"

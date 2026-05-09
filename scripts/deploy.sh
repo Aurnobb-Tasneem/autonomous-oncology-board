@@ -109,9 +109,9 @@ if [ -f "$REPO_DIR/.env" ]; then
   TREATMENT_VLLM_BASE_URL=$(grep -E '^TREATMENT_VLLM_BASE_URL=' "$REPO_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'") || true
 fi
 
-# Default FP16 70B tag when .env omits OLLAMA_MODEL (matches api.py / llm_client.py)
+# Default Q4_K_S 70B (~40 GB) when .env omits OLLAMA_MODEL (matches api.py / llm_client.py)
 if [ -z "$OLLAMA_MODEL" ]; then
-  OLLAMA_MODEL="llama3.3:70b-instruct-fp16"
+  OLLAMA_MODEL="llama3.3:70b-instruct-q4_K_S"
 fi
 
 # If OLLAMA_HOST wasn't persisted by bootstrap yet, re-detect the gateway now.

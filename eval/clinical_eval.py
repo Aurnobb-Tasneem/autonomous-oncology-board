@@ -177,7 +177,7 @@ def _build_prompt(case: dict, config: str) -> str:
 
 def call_ollama(
     prompt: str,
-    model: str = "llama3.3:70b-instruct-fp16",
+    model: str = "llama3.3:70b-instruct-q4_K_S",
     ollama_url: str = "http://localhost:11434",
     max_tokens: int = 256,
     timeout: int = 60,
@@ -246,7 +246,7 @@ def evaluate(
     config: str,
     ollama_url: str = "http://localhost:11434",
     vllm_base_url: str = "http://localhost:8006/v1",
-    ollama_model: str = "llama3.3:70b-instruct-fp16",
+    ollama_model: str = "llama3.3:70b-instruct-q4_K_S",
     base_8b_model: str = "meta-llama/Llama-3.1-8B-Instruct",
     max_cases: Optional[int] = None,
 ) -> dict:

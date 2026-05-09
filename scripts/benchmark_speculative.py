@@ -183,7 +183,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--speculative_url",  default="http://localhost:8007/v1")
     p.add_argument("--speculative_model", default="meta-llama/Llama-3.3-70B-Instruct")
     p.add_argument("--standard_url",     default="http://localhost:11434/v1")
-    p.add_argument("--standard_model",   default="llama3.3:70b-instruct-fp16")
+    p.add_argument("--standard_model",   default="llama3.3:70b-instruct-q4_K_S")
     p.add_argument("--n_prompts",        type=int, default=20)
     p.add_argument("--max_tokens",       type=int, default=256)
     p.add_argument("--output",           default="aob/eval/results/speculative_benchmark.json")

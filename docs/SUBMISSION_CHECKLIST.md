@@ -17,7 +17,7 @@
 - [ ] 100-case benchmark dataset validated: `python scripts/verify_hf_dataset.py`
 
 ### Live System (MI300X)
-- [ ] `ollama serve` running with `llama3.3:70b-instruct-fp16`
+- [ ] `ollama serve` running with `llama3.3:70b-instruct-q4_K_S`
 - [ ] `./scripts/serve_specialists.sh` — all 3 LoRA adapters serving
 - [ ] `python -m aob.ml.api` — FastAPI responding at :8000
 - [ ] Browser: `http://localhost:8000` loads without error
