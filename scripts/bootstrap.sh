@@ -44,7 +44,12 @@ export $(grep -v '^#' "$REPO_DIR/.env" | xargs)
 # the running container rather than assuming 172.17.0.1 (which breaks on
 # custom bip= networks, rootless Docker, or overlapping subnets).
 detect_docker_gateway() {
-  local gw
+  local gw nm
+  nm=$(docker inspect "$CONTAINER" --format '{{.HostConfig.NetworkMode}}' 2>/dev/null || true)
+  if [ "$nm" = "host" ]; then
+    echo "127.0.0.1"
+    return
+  fi
   # 1. Ask the running container what its default gateway is (most reliable).
   gw=$(docker exec "$CONTAINER" sh -c "ip route 2>/dev/null | awk '/default/ {print \$3; exit}'" 2>/dev/null || true)
   if [ -n "$gw" ]; then echo "$gw"; return; fi
@@ -61,7 +66,8 @@ echo "--> Detected Docker gateway: ${DOCKER_GW}  →  OLLAMA_HOST=${DETECTED_OLL
 # Write detected value back to .env so deploy.sh also picks it up.
 if ! grep -q '^OLLAMA_HOST=' "$REPO_DIR/.env"; then
   echo "OLLAMA_HOST=${DETECTED_OLLAMA_HOST}" >> "$REPO_DIR/.env"
-elif grep -q '^OLLAMA_HOST=http://172.17.0.1' "$REPO_DIR/.env"; then
+elif grep -qE '^OLLAMA_HOST=http://172\.(17|18)\.0\.1' "$REPO_DIR/.env"; then
+  # Refresh stale bridge defaults (common mismatch when the ML container uses host networking).
   sed -i "s|^OLLAMA_HOST=.*|OLLAMA_HOST=${DETECTED_OLLAMA_HOST}|" "$REPO_DIR/.env"
 fi
 export OLLAMA_HOST="${DETECTED_OLLAMA_HOST}"

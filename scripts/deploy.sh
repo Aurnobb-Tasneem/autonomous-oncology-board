@@ -120,10 +120,27 @@ fi
 
 # If OLLAMA_HOST wasn't persisted by bootstrap yet, re-detect the gateway now.
 if [ -z "$OLLAMA_HOST" ]; then
-  DOCKER_GW=$(docker exec "$CONTAINER" sh -c \
-    "ip route 2>/dev/null | awk '/default/ {print \$3; exit}'" 2>/dev/null || echo "172.17.0.1")
-  OLLAMA_HOST="http://${DOCKER_GW}:11434"
-  echo "    OLLAMA_HOST not in .env — detected as ${OLLAMA_HOST}"
+  _netm=$(docker inspect "$CONTAINER" --format '{{.HostConfig.NetworkMode}}' 2>/dev/null || true)
+  if [ "$_netm" = "host" ]; then
+    OLLAMA_HOST="http://127.0.0.1:11434"
+    echo "    OLLAMA_HOST not in .env — container uses host network → ${OLLAMA_HOST}"
+  else
+    DOCKER_GW=$(docker exec "$CONTAINER" sh -c \
+      "ip route 2>/dev/null | awk '/default/ {print \$3; exit}'" 2>/dev/null || echo "172.17.0.1")
+    OLLAMA_HOST="http://${DOCKER_GW}:11434"
+    echo "    OLLAMA_HOST not in .env — detected as ${OLLAMA_HOST}"
+  fi
+fi
+
+# Bridge-gateway URLs do not reach host Ollama when the ML container uses host networking.
+_netm=$(docker inspect "$CONTAINER" --format '{{.HostConfig.NetworkMode}}' 2>/dev/null || true)
+if [ "$_netm" = "host" ]; then
+  case "${OLLAMA_HOST:-}" in
+    *172.17.0.1*|*172.18.0.1*)
+      echo "    NOTE: $CONTAINER uses host network — OLLAMA_HOST was ${OLLAMA_HOST}; using http://127.0.0.1:11434"
+      OLLAMA_HOST="http://127.0.0.1:11434"
+      ;;
+  esac
 fi
 echo "--> OLLAMA_HOST: ${OLLAMA_HOST}"
 echo "--> OLLAMA_MODEL: ${OLLAMA_MODEL}"
