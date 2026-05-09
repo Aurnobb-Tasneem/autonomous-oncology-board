@@ -8,6 +8,7 @@
 #   bash scripts/deploy.sh
 #
 # Optional: CONTAINER=rocm2 bash scripts/deploy.sh
+# Flags: --skip-pull  --skip-frontend
 
 set -euo pipefail
 
@@ -18,11 +19,13 @@ API_URL="http://localhost:8000/health"
 HEALTH_RETRIES=30      # 30 × 2s = 60s max wait
 HEALTH_INTERVAL=2
 SKIP_PULL=false
+SKIP_FRONTEND=false
 
 # Parse flags
 for arg in "$@"; do
   case "$arg" in
     --skip-pull) SKIP_PULL=true ;;
+    --skip-frontend) SKIP_FRONTEND=true ;;
   esac
 done
 
@@ -54,7 +57,9 @@ echo "    OK"
 # ── 2b. Rebuild & restart Next.js frontend on the HOST ────────────────────
 # The frontend runs on the host (not in the ROCm container). On every deploy
 # we install deps, rebuild, and restart `next start` on :3000.
-if [ -d "$REPO_DIR/frontend" ]; then
+if [ "$SKIP_FRONTEND" = true ]; then
+  echo "--> Skipping Next.js frontend (--skip-frontend)"
+elif [ -d "$REPO_DIR/frontend" ] && command -v npm >/dev/null 2>&1; then
   echo "--> Rebuilding Next.js frontend..."
   cd "$REPO_DIR/frontend"
   if [ ! -f ".env.local" ]; then
@@ -75,6 +80,8 @@ if [ -d "$REPO_DIR/frontend" ]; then
   sleep 3
   cd "$REPO_DIR"
   echo "    OK"
+elif [ -d "$REPO_DIR/frontend" ]; then
+  echo "--> Skipping Next.js frontend (npm not on PATH — install Node.js or use --skip-frontend)"
 fi
 
 # ── 3. Restart FastAPI ─────────────────────────────────────────────────────

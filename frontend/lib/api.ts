@@ -271,6 +271,27 @@ export async function runDemoCase(caseName: string): Promise<AnalyzeResponse> {
   return res.json();
 }
 
+/** Full job snapshot from GET /status/{job_id} (works through Next proxy; SSE often does not). */
+export interface JobStatusPayload {
+  job_id: string;
+  case_id: string;
+  status: JobStatus;
+  steps: Array<{
+    agent: string;
+    message: string;
+    timestamp: string;
+    progress: number;
+  }>;
+  created_at: string;
+  error?: string | null;
+}
+
+export async function getJobStatus(jobId: string): Promise<JobStatusPayload> {
+  const res = await fetch(`${BASE}/status/${jobId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Status ${res.status}`);
+  return res.json();
+}
+
 export async function analyzeImages(
   images: File[],
   metadata?: Record<string, unknown>

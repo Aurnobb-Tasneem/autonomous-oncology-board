@@ -6,7 +6,7 @@ import NavBar from "@/components/NavBar";
 import AgentTimeline from "@/components/AgentTimeline";
 import VramBar from "@/components/VramBar";
 import StatusBadge from "@/components/StatusBadge";
-import { streamJob, type SseStep, type JobStatus } from "@/lib/api";
+import { getJobStatus, type SseStep, type JobStatus } from "@/lib/api";
 
 const AGENT_META: Record<string, { icon: string; label: string; color: string }> = {
   pathologist: { icon: "🔬", label: "GigaPath", color: "#0d9488" },
@@ -44,10 +44,7 @@ function resolveAgent(step: SseStep): string {
 
   if (step.agent) {
     const a = step.agent.toLowerCase();
-    if (a.includes("patholog") || a.includes("gigapath")) return "pathologist";
-    if (a.includes("research")) return "researcher";
-    if (a.includes("oncolog")) return "oncologist";
-    // Qwen / VLM second opinion
+    // Must run before "patholog" — `vlm_pathologist` contains substring "patholog".
     if (
       a.includes("qwen") ||
       a.includes("vlm_pathologist") ||
@@ -56,14 +53,17 @@ function resolveAgent(step: SseStep): string {
     ) {
       return "second_opinion";
     }
+    if (a.includes("patholog") || a.includes("gigapath")) return "pathologist";
+    if (a.includes("research")) return "researcher";
+    if (a.includes("oncolog")) return "oncologist";
     return step.agent;
   }
 
   const type = step.type?.toLowerCase() ?? "";
+  if (type.includes("qwen") || type.includes("vlm_pathologist") || type.includes("vlm")) return "second_opinion";
   if (type.includes("patholog") || type.includes("gigapath")) return "pathologist";
   if (type.includes("research")) return "researcher";
   if (type.includes("oncolog")) return "oncologist";
-  if (type.includes("qwen") || type.includes("vlm_pathologist") || type.includes("vlm")) return "second_opinion";
   return "system";
 }
 
@@ -84,27 +84,48 @@ export default function AnalyzePage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Poll /status/{jobId} — reliable through Next.js → remote FastAPI. SSE (EventSource) often
+  // does not stream incrementally when proxied, which leaves the UI at "0 steps" forever.
   useEffect(() => {
     if (!jobId) return;
-    setStatus("running");
+    let cancelled = false;
 
-    const cleanup = streamJob(
-      jobId,
-      (step) => {
-        setSteps((prev) => [...prev, step]);
-      },
-      () => {
-        // Done
-        setStatus("done");
-        setRedirectIn(3);
-      },
-      (err) => {
-        setError(err);
-        setStatus("failed");
+    const mapStep = (s: {
+      agent: string;
+      message: string;
+      timestamp: string;
+      progress: number;
+    }): SseStep => ({
+      type: s.agent,
+      agent: s.agent as SseStep["agent"],
+      message: s.message,
+      progress: s.progress,
+      timestamp: s.timestamp,
+    });
+
+    const tick = async () => {
+      try {
+        const data = await getJobStatus(jobId);
+        if (cancelled) return;
+        setSteps(data.steps.map(mapStep));
+        setStatus(data.status);
+        if (data.status === "failed") {
+          setError(data.error ?? "Pipeline failed");
+        }
+        if (data.status === "done") {
+          setRedirectIn((prev) => (prev === null ? 3 : prev));
+        }
+      } catch {
+        // Transient network/proxy blip — next poll usually succeeds.
       }
-    );
+    };
 
-    return cleanup;
+    tick();
+    const iv = setInterval(tick, 1200);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, [jobId]);
 
   // Countdown redirect
