@@ -83,6 +83,51 @@ def _sanitize_hf_token_env() -> None:
         os.environ.pop("HF_TOKEN", None)
 
 
+def _rocm_showpids_process_bucket(pid: int, reported_name: str) -> str:
+    """
+    Normalize rocm-smi --showpids PROCESS NAME into buckets used by /api/vram.
+
+    The driver often emits ``unknown`` when the API runs inside Docker but the
+    GPU workload is a **host** process (typical for Ollama): the KFD PID is
+    valid for VRAM accounting, but this container's ``/proc/<pid>`` does not
+    exist, so the name cannot be resolved here.
+
+    When ``/proc`` is visible, we refine ``python`` vs ``uvicorn`` via cmdline
+    and fold vLLM runner names onto ``vllm``.
+    """
+    rep = (reported_name or "").strip().lower()
+    dubious = rep in ("", "unknown", "?", "-", "n/a")
+
+    comm, cmd = "", ""
+    try:
+        with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="replace") as f:
+            comm = f.read().strip().lower()
+    except OSError:
+        pass
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            cmd = f.read().replace(b"\0", b" ").decode("utf-8", errors="replace").lower()
+    except OSError:
+        pass
+
+    if comm == "ollama" or rep == "ollama":
+        return "ollama"
+    if dubious and "ollama" in cmd:
+        return "ollama"
+    if "vllm" in rep or "vllm" in comm or "vllm" in cmd:
+        return "vllm"
+    if "uvicorn" in cmd:
+        return "uvicorn"
+    if rep in ("python", "python3") or comm in ("python", "python3", "pt_main_thread"):
+        return "python"
+
+    if not dubious and rep:
+        return rep
+    if comm:
+        return comm
+    return "unknown"
+
+
 # ── Job state machine ────────────────────────────────────────────────────────
 class JobStatus(str, Enum):
     QUEUED     = "queued"
@@ -691,9 +736,10 @@ async def get_vram():
             # Match lines that start with a PID (integer), followed by process name and VRAM bytes
             m = _re.match(r"^\s*(\d+)\s+(\S+)\s+\d+\s+(\d+)", line)
             if m:
-                proc_name = m.group(2).lower()
-                vram_b    = int(m.group(3))
-                vram_gb   = round(vram_b / 1e9, 1)
+                pid = int(m.group(1))
+                proc_name = _rocm_showpids_process_bucket(pid, m.group(2))
+                vram_b = int(m.group(3))
+                vram_gb = round(vram_b / 1e9, 1)
                 processes[proc_name] = processes.get(proc_name, 0.0) + vram_gb
     except Exception as e:
         log.debug(f"rocm-smi --showpids unavailable: {e}")
@@ -738,6 +784,10 @@ async def get_vram():
         "python": "Python — ML stack (GigaPath + torch)",
         "python3": "Python3 — ML stack",
         "vllm": "vLLM — specialist LoRA server",
+        "unknown": (
+            "Unlabeled GPU process (rocm-smi). Often host Ollama while the API runs in Docker; "
+            "use docker run --pid=host or compare with host rocm-smi --showpids."
+        ),
     }
     processes_display: list[dict] = []
     if processes:
