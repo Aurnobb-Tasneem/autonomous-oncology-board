@@ -693,6 +693,7 @@ async def get_vram():
     # ── Total VRAM (JSON — reliable on all ROCm versions) ─────────────────
     total_b = 0
     used_b = 0
+    rocm_gpu_adapters_summed = 0
     source = "mock"
     try:
         mem_result = subprocess.run(
@@ -703,14 +704,33 @@ async def get_vram():
             raise RuntimeError(mem_result.stderr)
         import json as _json
         raw = _json.loads(mem_result.stdout)
-        card = next(iter(raw.values()), {})
-        total_b = int(card.get("VRAM Total Memory (B)", 0))
-        used_b = int(card.get("VRAM Total Used Memory (B)", 0))
+        # Sum every adapter that reports VRAM. Using only the first card hides
+        # usage on other GPUs (common when Ollama is pinned to GPU 0 and
+        # GigaPath/vLLM use GPU 1 — totals looked ~45 GB “used” while 70B
+        # lived on the other device).
+        total_b = 0
+        used_b = 0
+        rocm_gpu_adapters_summed = 0
+        for card in raw.values():
+            if not isinstance(card, dict):
+                continue
+            t = card.get("VRAM Total Memory (B)")
+            u = card.get("VRAM Total Used Memory (B)")
+            if t is None and u is None:
+                continue
+            rocm_gpu_adapters_summed += 1
+            if t is not None:
+                total_b += int(t)
+            if u is not None:
+                used_b += int(u)
+        if rocm_gpu_adapters_summed == 0:
+            raise RuntimeError("rocm-smi JSON had no VRAM fields")
         source = "rocm-smi"
     except Exception as e:
         log.warning(f"rocm-smi --showmeminfo failed: {e} — returning mock data")
         total_b = int(192 * _GIB)
         used_b = int(102 * _GIB)
+        rocm_gpu_adapters_summed = 0
 
     total_gb = round(total_b / 1e9, 1)
     used_gb = round(used_b / 1e9, 1)
@@ -852,6 +872,7 @@ async def get_vram():
         "unattributed_gpu_gb": unattributed_gpu_gb,
         "ollama_model": _env_nonempty("OLLAMA_MODEL", "llama3.3:70b-instruct-fp16"),
         "processes": {k: v for k, v in processes.items()} if processes else None,
+        "rocm_gpu_adapters_summed": rocm_gpu_adapters_summed,
         "hardware": "AMD Instinct MI300X · 192 GB HBM3",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
