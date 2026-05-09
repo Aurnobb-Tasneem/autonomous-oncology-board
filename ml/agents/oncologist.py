@@ -42,7 +42,7 @@ import logging
 import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from ml.models.llm_client import OllamaClient
 from ml.agents.pathologist import PathologyReport
@@ -50,6 +50,32 @@ from ml.agents.researcher import ResearchSummary
 from ml.utils.json_extract import extract_json_object
 
 log = logging.getLogger(__name__)
+
+
+def _structured_payload_to_dict(obj: Optional[object]) -> dict:
+    """Turn dict, dataclass `.to_dict()`, or pydantic `.model_dump()` into a plain dict."""
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    td = getattr(obj, "to_dict", None)
+    if callable(td):
+        try:
+            out = td()
+            if isinstance(out, dict):
+                return out
+        except Exception:
+            pass
+    md = getattr(obj, "model_dump", None)
+    if callable(md):
+        try:
+            out = md()
+            if isinstance(out, dict):
+                return out
+        except Exception:
+            pass
+    return {"value": str(obj)}
+
 
 ONCOLOGIST_SYSTEM = """You are a senior consultant oncologist chairing a multidisciplinary tumour board.
 You have received a digital pathology report from an AI pathologist and a clinical research brief
@@ -177,8 +203,8 @@ class OncologistAgent:
         research: ResearchSummary,
         similar_cases: Optional[list[dict]] = None,
         metadata: Optional[dict] = None,
-        biomarker_panel: Optional[dict] = None,
-        treatment_proposal: Optional[dict] = None,
+        biomarker_panel: Optional[Any] = None,
+        treatment_proposal: Optional[Any] = None,
     ) -> str:
         tissue = pathology.tissue_type.replace("_", " ").title()
         stage  = TISSUE_STAGE_MAP.get(pathology.tissue_type, "Unknown stage")
@@ -245,21 +271,34 @@ class OncologistAgent:
         # ── Biomarker panel (from Biomarker specialist) ───────────────────────
         biomarker_panel_section = ""
         if biomarker_panel:
+            panel = _structured_payload_to_dict(biomarker_panel)
+
             lines = ["=== MOLECULAR BIOMARKER PANEL RESULTS ==="]
-            for marker, detail in biomarker_panel.items():
-                if isinstance(detail, dict):
-                    score = detail.get("score", "?")
-                    level = detail.get("level", "unknown")
-                    lines.append(f"- {marker}: {level} (score={score})")
-                else:
-                    lines.append(f"- {marker}: {detail}")
+            tests_required = panel.get("tests_required")
+            gated = panel.get("gated_therapies")
+            rationale = panel.get("rationale")
+            if tests_required:
+                lines.append("TESTS REQUIRED:")
+                for t in tests_required:
+                    lines.append(f"- {t}")
+            if gated:
+                lines.append("GATED THERAPIES:")
+                for g in gated:
+                    lines.append(f"- {g}")
+            if rationale:
+                lines.append(f"RATIONALE: {rationale}")
+            if len(lines) == 1:
+                # Fallback: show all keys (in case schema changes)
+                for k, v in panel.items():
+                    lines.append(f"- {k}: {v}")
             biomarker_panel_section = "\n".join(lines) + "\n\n"
 
         # ── Treatment specialist proposal ─────────────────────────────────────
         treatment_proposal_section = ""
         if treatment_proposal:
+            proposal = _structured_payload_to_dict(treatment_proposal)
             lines = ["=== TREATMENT SPECIALIST PROPOSAL ==="]
-            for k, v in treatment_proposal.items():
+            for k, v in proposal.items():
                 lines.append(f"- {k}: {v}")
             treatment_proposal_section = "\n".join(lines) + "\n\n"
 
@@ -364,8 +403,8 @@ Return only the JSON. No markdown fences."""
         research_summary: ResearchSummary,
         similar_cases: Optional[list[dict]] = None,
         metadata: Optional[dict] = None,
-        biomarker_panel: Optional[dict] = None,
-        treatment_proposal: Optional[dict] = None,
+        biomarker_panel: Optional[Any] = None,
+        treatment_proposal: Optional[Any] = None,
     ) -> ManagementPlan:
         """
         Synthesise the final Patient Management Plan.
