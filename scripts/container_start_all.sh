@@ -59,6 +59,11 @@ echo ""
 # ── 1. Install Ollama if missing ─────────────────────────────────────────────
 if ! command -v ollama &>/dev/null; then
   echo "--> Installing Ollama (ROCm-native)..."
+  # zstd is required by the Ollama installer since 0.6+
+  if ! command -v zstd &>/dev/null; then
+    echo "    Installing zstd (required by Ollama installer)..."
+    apt-get install -y -qq zstd 2>/dev/null || true
+  fi
   curl -fsSL https://ollama.com/install.sh | sh
   echo "    OK"
 else
