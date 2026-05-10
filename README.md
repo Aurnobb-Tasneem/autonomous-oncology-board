@@ -13,29 +13,29 @@
 
 ## What AOB Does
 
-AOB simulates a hospital multidisciplinary tumour board (MTB) with **vision + language** pathologists, then researcher and oncologist:
+AOB simulates a hospital multidisciplinary tumour board (MTB) where three specialized AI agents collaborate, debate, and reach clinical consensus:
 
 ```
- Patient Case (WSI patches + metadata)
+ Patient Case (histopathology patches + metadata)
           │
  ┌────────▼────────┐
  │  PATHOLOGIST    │  Prov-GigaPath ViT-Giant 1.1B (Agent 1a)
- │  (embedding FM) │  → Heatmaps · Uncertainty · Tissue classification
+ │  (embedding FM) │  → MC Dropout uncertainty · Tissue classification
  └────────┬────────┘
           │
  ┌────────▼────────┐
- │  VLM PATHOLOGIST │  Qwen2.5-VL-7B-Instruct (Agent 1b, HuggingFace)
- │  (pixel second   │  → Direct patch images → morphology text · tissue guess
- │   opinion)       │  → Reconciled with GigaPath (MetaEvaluator) before RAG
+ │  VLM PATHOLOGIST│  Qwen2.5-VL-7B-Instruct (Agent 1b)
+ │  (second opinion│  → Direct patch images → morphology text
+ │   via pixels)   │  → Reconciled with GigaPath before RAG
  └────────┬────────┘
-          │ PathologyReport + VLMOpinion + reconciliation
+          │ PathologyReport + VLMOpinion
  ┌────────▼────────┐
- │  RESEARCHER     │  Qdrant RAG + Llama 3.3 70B
+ │  RESEARCHER     │  Qdrant RAG + Llama 3.3 70B (Q4_K_S)
  │  Agent 2        │  → 500-doc NCCN/TCGA corpus · Citations
  └────────┬────────┘
           │ EvidenceBundle JSON
  ┌────────▼────────┐
- │  ONCOLOGIST     │  Llama 3.3 70B (FP8) + 3× LoRA adapters
+ │  ONCOLOGIST     │  Llama 3.3 70B (Q4_K_S) + 3× LoRA adapters
  │  Agent 3        │  → DEBATE LOOP → Revised plan
  └────────┬────────┘
           │
@@ -65,36 +65,45 @@ Benchmark dataset: [aob-bench/ClinicalEval on HuggingFace](https://huggingface.c
 
 ## Why AMD MI300X
 
-The architecture requires simultaneous in-memory residency of:
+The architecture requires **simultaneous in-memory residency** of all models — no model swapping, no sharding:
 
-| Component | VRAM (order of magnitude) |
-|-----------|---------------------------|
-| Llama 3.3 70B (FP8) | ~70 GB |
-| Llama 3.1 8B + 3 LoRA adapters | ~16 GB |
-| Prov-GigaPath (FP16) | ~3 GB |
-| **Qwen2.5-VL-7B-Instruct (BF16)** | **~15 GB** *(Agent 1b — loads via Transformers when available)* |
-| vLLM KV Cache (full debate) | ~30 GB |
-| Qdrant + overhead | ~9 GB |
-| **Total (all models resident)** | **~143 GB** |
+| Component | VRAM |
+|-----------|------|
+| Llama 3.3 70B (Q4_K_S via Ollama) | ~40 GB |
+| Llama 3.1 8B + 3× LoRA adapters (vLLM) | ~22 GB |
+| Prov-GigaPath ViT-Giant (FP16) | ~3 GB |
+| Qwen2.5-VL-7B-Instruct (BF16) | ~15 GB |
+| vLLM KV Cache (full debate context) | ~20 GB |
+| Qdrant + ROCm overhead | ~9 GB |
+| **Total (all models resident)** | **~109 GB** |
 
-If the VLM fails to load (missing `HF_TOKEN`, OOM, or import error), the board **continues with GigaPath only** and logs `Qwen2-VL skipped …`.
-
-**NVIDIA H100 = 80 GB. A full stack with GigaPath + 70B + Qwen-VL + KV headroom exceeds 80 GB. The math does not work on a single H100.**
-
-The MI300X's 192 GB HBM3 unified pool leaves headroom once GigaPath, Qwen-VL, 70B, adapters, and KV cache are all resident (~143 GB in the reference budget above).
+**NVIDIA H100 = 80 GB.** Llama 70B Q4_K_S (~40 GB) + GigaPath (~3 GB) + LoRA specialists (~22 GB) + KV cache (~20 GB) = **~85 GB** — 5 GB over the H100 hard limit before a single token generates. The math does not work on a single H100.
 
 ```
-H100: ████████████████████████████████████████░ 80/80 GB → OOM ✗
-MI300X: ██████████████████████████████░░░░░░░░░ ~143/192 GB full stack ✓
+H100:   ████████████████████████████████████████ 80/80 GB → OOM ✗
+MI300X: ██████████████████████░░░░░░░░░░░░░░░░░ ~109/192 GB ✓  83 GB headroom
 ```
 
-Measured peak (Day-1 smoke, not all components maxed concurrently): **88.2 GB / 191.7 GB** (verified via `rocm-smi`).
+Measured peak (Day-1 smoke test, models not all maxed concurrently): **88.2 GB / 191.7 GB** verified via `rocm-smi`.
+
+---
+
+## The Agent Debate Protocol
+
+Unlike single-pass pipelines, AOB agents argue before finalising:
+
+1. **Oncologist** drafts initial management plan
+2. **Researcher** challenges with RAG evidence: *"⚠️ EGFR not confirmed — NCCN Category 1 requires molecular testing first"*
+3. **Oncologist** revises — revision diff shown in UI
+4. **Meta-Evaluator** scores consensus (0–100). If < 70, triggers another round (max 3 rounds)
+
+The final report includes the full **Debate Transcript**, consensus score, and revision diff.
 
 ---
 
 ## Specialist LoRA Suite
 
-Three LoRA adapters (rank 16, α=32) fine-tuned on Llama 3.1 8B Instruct, served simultaneously via vLLM multi-adapter hot-swap:
+Three LoRA adapters (rank 16, α=32) fine-tuned on Llama 3.1 8B Instruct, hot-swapped via vLLM on a single 8B base model:
 
 | Adapter | Task | Training Data |
 |---------|------|---------------|
@@ -103,22 +112,14 @@ Three LoRA adapters (rank 16, α=32) fine-tuned on Llama 3.1 8B Instruct, served
 | `treatment_specialist` | NCCN-aligned first-line treatment | 50 expert examples |
 
 ```bash
-# Launch all three adapters on a single 8B base model
-./scripts/serve_specialists.sh
+# Train adapters (50-step smoke train, ~5 min each on MI300X)
+python scripts/finetune_tnm.py --max_steps 50
+python scripts/finetune_biomarker.py --max_steps 50
+python scripts/finetune_treatment.py --max_steps 50
+
+# Launch all three on a single 8B base model (~22 GB)
+bash scripts/serve_specialists.sh
 ```
-
----
-
-## The Agent Debate Protocol
-
-Unlike single-pass pipelines, AOB's oncologist and researcher argue before finalising:
-
-1. **Oncologist** drafts initial management plan
-2. **Researcher** challenges with RAG evidence: *"⚠️ EGFR not confirmed — NCCN Category 1 requires molecular testing first"*
-3. **Oncologist** revises — revision diff shown in UI
-4. **Meta-Evaluator** scores consensus (0–100). If < 70, triggers another round (max 3)
-
-The final report includes the full **Debate Transcript** and **revision diff**.
 
 ---
 
@@ -126,17 +127,16 @@ The final report includes the full **Debate Transcript** and **revision diff**.
 
 | Feature | Description |
 |---------|-------------|
-| **Qwen2.5-VL second opinion** | Agent 1b: native multimodal vision on up to 4 patches; reconciled with GigaPath before RAG (`ml/agents/vlm_pathologist.py`) |
-| **Triple-Modal Explainability** | Attention Rollout + Grad-CAM++ + Integrated Gradients per patch |
-| **MC Dropout Uncertainty** | N=20 stochastic passes → "91% ± 4.2%" confidence intervals |
+| **Qwen2.5-VL second opinion** | Agent 1b: native multimodal vision on patches; reconciled with GigaPath before RAG |
+| **MC Dropout Uncertainty** | N=20 stochastic passes → "91% ± 4.2%" confidence intervals; flags high-uncertainty cases |
 | **Differential Diagnosis** | Top-3 diagnoses with posterior probabilities |
 | **Clinical Trial Matching** | Semantic search over 500-trial ClinicalTrials.gov corpus |
 | **Counterfactual Reasoning** | "What if EGFR negative?" → instant revised plan |
 | **Board Memory** | GigaPath embeddings stored → similar historical case retrieval |
-| **Patient Summary** | 8th-grade English translation of clinical plan |
-| **VRAM Dashboard** | Live `rocm-smi` widget with H100 comparison bar |
-| **Concurrent Cases** | 3 simultaneous analyses; peak VRAM ~118 GB / 192 GB |
-| **Speculative Decoding** | Llama 3.1 8B draft → +53% throughput on 70B inference |
+| **Patient Summary** | Plain-English translation of clinical plan |
+| **Live VRAM Dashboard** | Real-time `rocm-smi` widget with H100 OOM comparison bar |
+| **Digital Twin PFS** | 12-month progression-free survival simulation |
+| **Speculative Decoding** | Llama 3.1 8B draft model → +53% throughput on 70B inference |
 
 ---
 
@@ -145,59 +145,88 @@ The final report includes the full **Debate Transcript** and **revision diff**.
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
 | GPU | AMD Instinct MI300X | AMD Instinct MI300X |
-| VRAM | 128 GB | 192 GB (full concurrent) |
+| VRAM | 128 GB | 192 GB |
 | ROCm | 6.0+ | 6.2+ |
 | RAM | 128 GB | 256 GB |
 | Storage | 200 GB SSD | 500 GB NVMe |
 
 ---
 
-## Quick Start
+## Quick Start (AMD MI300X Host)
 
 ### Prerequisites
+
 ```bash
-# ROCm 6.x installed
-# Python 3.10+
-# HuggingFace token (GigaPath is gated; Qwen2.5-VL download recommended)
-#   export HF_TOKEN=hf_...
-# Ollama with ROCm support
+# ROCm 6.x installed on the host
+# Docker with ROCm device access (for the ML container)
+# Ollama installed on the host (ROCm-native)
 ollama pull llama3.3:70b-instruct-q4_K_S
+
+# HuggingFace token (GigaPath + Qwen2.5-VL are gated models)
+export HF_TOKEN=hf_...
 ```
 
-### Install
+### Configure `.env`
+
 ```bash
-cd aob/ml
-pip install -r requirements.txt
+cp .env.example .env
+# Edit .env — set HF_TOKEN and verify OLLAMA_HOST:
+#   OLLAMA_HOST=http://127.0.0.1:11434   # when rocm2 uses --network host (most setups)
+#   OLLAMA_MODEL=llama3.3:70b-instruct-q4_K_S
 ```
 
-### Run
+### Start everything
+
 ```bash
-# 1. Start Ollama (pull: ollama pull llama3.3:70b-instruct-q4_K_S)
-ollama serve
+# Start Qdrant + ML container + FastAPI (all-in-one)
+bash scripts/stack_up.sh
 
-# 2. Start specialist LoRA adapters
-./scripts/serve_specialists.sh
+# Or use make:
+make stack-up
 
-# 3. Start AOB API + frontend
-python -m aob.ml.api
+# Health check
+curl -sS http://localhost:8000/health | python3 -m json.tool
+```
 
-# 4. Open browser
-open http://localhost:8000
+### Optional: Specialist LoRA server
+
+```bash
+# Copy pre-trained adapters from container (if trained inside rocm2)
+mkdir -p ml/models/checkpoints
+docker cp rocm2:/workspace/aob/ml/models/checkpoints/tnm_lora        ./ml/models/checkpoints/
+docker cp rocm2:/workspace/aob/ml/models/checkpoints/biomarker_lora  ./ml/models/checkpoints/
+docker cp rocm2:/workspace/aob/ml/models/checkpoints/treatment_lora  ./ml/models/checkpoints/
+
+# Start vLLM specialist server (run in tmux/screen)
+bash scripts/serve_specialists.sh
+
+# Verify
+curl -sS http://localhost:8000/health/specialists | python3 -m json.tool
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm ci && npm run build
+npx next start -p 3000
+# Open http://localhost:3000
+```
+
+### Run a demo case
+
+```bash
+# Available: lung_adenocarcinoma, colon_adenocarcinoma, lung_squamous_cell
+curl -sS -X POST http://localhost:8000/demo/run/lung_adenocarcinoma | python3 -m json.tool
+# Returns job_id — poll /report/{job_id} or stream /stream/{job_id}
 ```
 
 ### Run Benchmark
+
 ```bash
-# Generate 100-case eval dataset
 python scripts/gen_clinical_eval_cases.py
-
-# Run full benchmark (requires active GPU stack)
 python -m aob.eval.clinical_eval --config aob_full
-
-# Run ablation study (mock mode, no GPU needed)
-python -m aob.eval.ablation_study --mock
-
-# Run calibration analysis
-python -m aob.eval.calibration --mock
+python -m aob.eval.ablation_study --mock   # no GPU needed
 ```
 
 ---
@@ -206,56 +235,74 @@ python -m aob.eval.calibration --mock
 
 ```
 aob/
+├── .env.example                    # Environment template
+├── Makefile                        # make stack-up / make smoke / make api
+├── docker-compose.yml              # Qdrant + optional vLLM profile
+│
 ├── ml/
 │   ├── agents/
-│   │   ├── pathologist.py          # GigaPath inference + heatmaps
-│   │   ├── vlm_pathologist.py      # Qwen2.5-VL-7B pixel-level second opinion
-│   │   ├── researcher.py           # RAG synthesis
-│   │   ├── oncologist.py           # Llama 3.3 70B synthesis + debate
+│   │   ├── pathologist.py          # GigaPath inference + MC Dropout uncertainty
+│   │   ├── vlm_pathologist.py      # Qwen2.5-VL-7B visual second opinion
+│   │   ├── researcher.py           # RAG synthesis (Qdrant + Llama 70B)
+│   │   ├── oncologist.py           # Llama 70B synthesis + debate
 │   │   ├── biomarker_specialist.py # LoRA biomarker extraction
 │   │   ├── treatment_specialist.py # LoRA treatment planning
+│   │   ├── staging_specialist.py   # LoRA TNM staging
 │   │   ├── differential.py         # Top-3 differential diagnosis
 │   │   ├── counterfactual.py       # What-if replanning
 │   │   ├── patient_summary.py      # Plain-English patient report
-│   │   └── trial_matcher.py        # ClinicalTrials.gov matching
+│   │   ├── trial_matcher.py        # ClinicalTrials.gov matching
+│   │   └── digital_twin.py         # 12-month PFS simulation
 │   ├── models/
-│   │   ├── gigapath_loader.py      # GigaPath weight loading
-│   │   ├── llm_client.py           # Ollama + vLLM async clients
+│   │   ├── gigapath_loader.py      # GigaPath weight loading + preprocessing
+│   │   ├── llm_client.py           # Ollama client (Llama 3.3 70B)
 │   │   └── explainability.py       # Grad-CAM++ + Integrated Gradients
 │   ├── training/
 │   │   ├── lora_trainer.py         # Generic LoRA training framework
 │   │   └── giga_head.py            # GigaPath MLP classification head
 │   ├── rag/
 │   │   ├── corpus_indexer.py       # Document ingestion + embedding
-│   │   ├── retriever.py            # Qdrant query interface
-│   │   └── trials/                 # ClinicalTrials.gov snapshot
-│   ├── data/
-│   │   ├── wsi.py                  # WSI patch extraction (openslide)
-│   │   └── preprocessing.py       # Patch normalization
-│   ├── board.py                    # Pipeline orchestration
-│   └── api.py                      # FastAPI endpoints
-├── eval/
-│   ├── clinical_eval.py            # ClinicalEval benchmark runner
-│   ├── ablation_study.py           # Ablation + bootstrap CIs
-│   ├── calibration.py              # ECE + reliability curves
-│   └── cases/
-│       └── clinical_eval_cases.json  # 100-case ground-truth dataset
-├── hf_dataset/
-│   ├── aob_bench.py                # HuggingFace dataset loader
-│   ├── clinical_eval_cases.json    # Dataset source
-│   └── README.md                   # HF dataset card
-├── frontend/
-│   └── static/                     # Self-contained HTML+JS UI
-├── scripts/
-│   ├── serve_specialists.sh        # vLLM multi-LoRA launcher
-│   ├── serve_speculative.sh        # Speculative decoding launcher
-│   ├── benchmark_speculative.py    # Throughput benchmark
-│   ├── gen_clinical_eval_cases.py  # Generate 100-case benchmark
-│   └── gen_trials_snapshot.py      # Generate trial corpus
-└── docs/
-    ├── technical_report.md         # 10-page research report
-    ├── demo_script.md              # 5-minute demo video script
-    └── diagrams/                   # Architecture diagrams
+│   │   └── retriever.py            # Qdrant query interface
+│   ├── board.py                    # Pipeline orchestration + debate loop
+│   ├── api.py                      # FastAPI endpoints
+│   └── requirements.txt
+│
+├── frontend/                       # Next.js 15 UI
+│   ├── app/
+│   │   ├── page.tsx                # Case upload + demo launcher
+│   │   ├── analyze/[jobId]/        # Live agent timeline (SSE)
+│   │   ├── report/[jobId]/         # Final management plan report
+│   │   ├── specialists/            # LoRA specialist health + details
+│   │   ├── benchmark/              # AOB-Bench results + ablation
+│   │   └── story/                  # Architecture narrative
+│   └── components/
+│       ├── VramBar.tsx             # Live VRAM + H100 OOM comparison
+│       ├── H100Simulator.tsx       # Interactive VRAM simulator
+│       ├── AgentTimeline.tsx       # SSE-streamed agent steps
+│       ├── DebateTranscript.tsx    # Debate rounds + revision diff
+│       ├── BiomarkerPanel.tsx      # Biomarker status grid
+│       ├── ConfidenceRing.tsx      # Diagnosis confidence ring
+│       ├── BoardMemoryPanel.tsx    # Similar past cases
+│       └── PfsChart.tsx            # Digital twin survival curve
+│
+├── data/
+│   └── demo_cases/
+│       ├── lung_adenocarcinoma.json
+│       ├── colon_adenocarcinoma.json
+│       └── lung_squamous_cell.json
+│
+└── scripts/
+    ├── stack_up.sh                 # One-command: Qdrant + rocm2 + FastAPI
+    ├── container_start_all.sh      # All-in-container startup (Ollama + API)
+    ├── deploy.sh                   # CI/CD redeploy (git pull + restart)
+    ├── bootstrap.sh                # First-time MI300X setup
+    ├── serve_specialists.sh        # vLLM multi-LoRA launcher (host)
+    ├── serve_specialists_in_container.sh  # vLLM inside rocm2
+    ├── finetune_tnm.py             # Train TNM LoRA adapter
+    ├── finetune_biomarker.py       # Train biomarker LoRA adapter
+    ├── finetune_treatment.py       # Train treatment LoRA adapter
+    ├── smoke_test.py               # GigaPath + Llama coexistence test
+    └── vram_monitor.sh             # rocm-smi VRAM logger
 ```
 
 ---
@@ -276,20 +323,14 @@ print(ds[0])
 
 ## Model Cards
 
-| Model | Base | Task | Notes |
-|-------|------|------|--------|
-| **Qwen2.5-VL-7B-Instruct** | `Qwen/Qwen2.5-VL-7B-Instruct` | Visual morphology + tissue second opinion | Served in-process with Transformers; requires `qwen-vl-utils` (see `requirements.txt`) |
-| `tnm_specialist` | Llama 3.1 8B Instruct | TNM staging | r=16, α=32 |
-| `biomarker_specialist` | Llama 3.1 8B Instruct | Biomarker extraction | r=16, α=32 |
-| `treatment_specialist` | Llama 3.1 8B Instruct | Treatment planning | r=16, α=32 |
-
-LoRA adapter HuggingFace repos (when published):
-
-| Adapter | HF Repo |
-|---------|---------|
-| `tnm_specialist` | `aob-bench/tnm-specialist-lora` |
-| `biomarker_specialist` | `aob-bench/biomarker-specialist-lora` |
-| `treatment_specialist` | `aob-bench/treatment-specialist-lora` |
+| Model | Base | Task | Precision |
+|-------|------|------|-----------|
+| **Llama 3.3 70B** | `llama3.3:70b-instruct-q4_K_S` | Researcher + Oncologist synthesis | Q4_K_S (~40 GB) via Ollama |
+| **Prov-GigaPath** | `prov-gigapath/prov-gigapath` | Patch embedding + tissue classification | FP16 (~3 GB) |
+| **Qwen2.5-VL-7B** | `Qwen/Qwen2.5-VL-7B-Instruct` | Visual morphology second opinion | BF16 (~15 GB) |
+| `tnm_specialist` | Llama 3.1 8B Instruct | TNM staging | LoRA r=16, α=32 |
+| `biomarker_specialist` | Llama 3.1 8B Instruct | Biomarker panel extraction | LoRA r=16, α=32 |
+| `treatment_specialist` | Llama 3.1 8B Instruct | NCCN treatment planning | LoRA r=16, α=32 |
 
 ---
 
@@ -316,4 +357,4 @@ Always consult a qualified oncologist for medical decisions.
 
 ---
 
-*Built on AMD MI300X · ROCm 6.x · Prov-GigaPath · Qwen2.5-VL-7B · Llama 3.3 70B · vLLM · Qdrant · FastAPI*
+*Built on AMD MI300X · ROCm 6.x · Prov-GigaPath · Qwen2.5-VL-7B · Llama 3.3 70B Q4_K_S · Ollama · vLLM · Qdrant · FastAPI · Next.js 15*

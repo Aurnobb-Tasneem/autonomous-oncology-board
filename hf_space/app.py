@@ -81,95 +81,250 @@ def _get_demo_cases() -> list[str]:
 
 # ── Mock fallback ──────────────────────────────────────────────────────────────
 
+def _mock_stages() -> list[dict]:
+    """
+    Return ordered pipeline steps for the mock flow.
+    Each dict has 'delay_s' (sleep before emitting), 'agent', 'message', 'log_line'.
+    Total elapsed: ~33 seconds, matching live MI300X timing.
+    """
+    return [
+        {
+            "delay_s": 0.5,
+            "agent": "system",
+            "message": "⏳ Board session initialised — AMD MI300X 192 GB HBM3 unified memory",
+            "log_line": "[system] (0%) Board session initialised — AMD MI300X 192 GB HBM3",
+        },
+        {
+            "delay_s": 1.2,
+            "agent": "pathologist",
+            "message": "🔬 Loading Prov-GigaPath ViT-Giant encoder (FP16, ~3 GB VRAM)...",
+            "log_line": "[pathologist] (5%) Loading Prov-GigaPath ViT-Giant encoder (FP16, ~3 GB VRAM)",
+        },
+        {
+            "delay_s": 2.3,
+            "agent": "pathologist",
+            "message": "🔬 Encoding patches — MC Dropout ×20 stochastic forward passes...",
+            "log_line": "[pathologist] (15%) Encoding patches — MC Dropout ×20 stochastic forward passes",
+        },
+        {
+            "delay_s": 4.5,
+            "agent": "pathologist",
+            "message": "🔬 Tissue classified: Lung Adenocarcinoma — 94.2% ± 3.1% (uncertainty: low)",
+            "log_line": "[pathologist] (28%) Tissue classified: Lung Adenocarcinoma — 94.2% ± 3.1%",
+        },
+        {
+            "delay_s": 1.2,
+            "agent": "researcher",
+            "message": "📚 Querying Qdrant corpus — retrieving top-8 evidence chunks...",
+            "log_line": "[researcher] (35%) Querying Qdrant corpus — top-8 chunks retrieved",
+        },
+        {
+            "delay_s": 5.3,
+            "agent": "researcher",
+            "message": "📚 Evidence loaded: NCCN NSCLC 2024 + 7 TCGA studies — synthesising via Llama 3.3 70B",
+            "log_line": "[researcher] (50%) Evidence loaded: NCCN NSCLC 2024 + 7 TCGA studies",
+        },
+        {
+            "delay_s": 2.5,
+            "agent": "tnm_specialist",
+            "message": "🏷️ TNM staging: T2bN2M0 → Stage IIIA confirmed (AJCC 8th Ed.)",
+            "log_line": "[tnm_specialist] (62%) TNM staging: T2bN2M0 → Stage IIIA (AJCC 8th Ed.)",
+        },
+        {
+            "delay_s": 4.5,
+            "agent": "oncologist",
+            "message": "👨‍⚕️ Synthesising Patient Management Plan via Llama 3.3 70B (~40 GB VRAM)...",
+            "log_line": "[oncologist] (75%) Synthesising Patient Management Plan",
+        },
+        {
+            "delay_s": 4.5,
+            "agent": "debate",
+            "message": "⚠️ Researcher challenge: EGFR status unknown — NCCN Category 1 pending molecular testing",
+            "log_line": "[debate] (85%) Researcher challenge: EGFR unknown — Cat 1 deferred",
+        },
+        {
+            "delay_s": 4.5,
+            "agent": "debate",
+            "message": "✏️ Oncologist revision: molecular panel added to immediate actions",
+            "log_line": "[debate] (92%) Oncologist revision: molecular panel added — consensus improving",
+        },
+        {
+            "delay_s": 2.5,
+            "agent": "system",
+            "message": "✅ Board consensus 87/100 — plan finalised and signed off (1 debate round)",
+            "log_line": "[system] (100%) Consensus 87/100 — plan finalised",
+        },
+    ]
+
+
 def _mock_report(case_name: str) -> dict:
-    """Return a mock management plan dict for demo/offline mode."""
+    """Return a rich mock management plan for demo/offline mode."""
+    tissue_label = case_name.replace("_", " ").title()
     return {
         "case_id": f"demo_{case_name}",
+        "status": "done",
+        "total_time_s": 34.2,
+        "pathology_report": {
+            "tissue_type": case_name,
+            "confidence": 0.942,
+            "uncertainty_interval": "94.2% ± 3.1%",
+            "high_uncertainty": False,
+            "flags": ["glandular_pattern", "nuclear_atypia", "lepidic_growth"],
+            "n_patches": 12,
+            "biomarkers": {
+                "EGFR": {"score": 0.72, "level": "high"},
+                "ALK":  {"score": 0.18, "level": "low"},
+                "PD_L1":{"score": 0.55, "level": "moderate"},
+            },
+        },
         "management_plan": {
             "diagnosis": {
-                "primary": case_name.replace("_", " ").title(),
-                "tnm_stage": "Stage III-IV — pending molecular workup",
-                "confidence": 0.87,
+                "primary": tissue_label,
+                "tnm_stage": "T2bN2M0 — Stage IIIA (AJCC 8th Ed.)",
+                "confidence": 0.942,
             },
             "immediate_actions": [
-                "Order comprehensive molecular panel (EGFR/ALK/ROS1/KRAS/PD-L1)",
-                "Obtain complete staging CT chest/abdomen/pelvis",
-                "Multidisciplinary tumour board review",
+                "Order comprehensive molecular panel: EGFR/ALK/ROS1/KRAS/PD-L1/BRAF/MET/RET",
+                "Staging CT chest/abdomen/pelvis with contrast",
+                "Brain MRI with gadolinium",
+                "Multidisciplinary tumour board referral for surgical candidacy",
             ],
             "treatment_plan": {
-                "first_line": "Pending molecular results — osimertinib if EGFR+ / pembrolizumab if PD-L1 ≥50%",
-                "rationale": "NCCN Category 1 evidence supports targeted therapy over chemotherapy in driver-mutation positive disease",
-                "alternatives": ["Carboplatin + Pemetrexed + Pembrolizumab (driver-negative)", "Clinical trial enrollment"],
+                "first_line": (
+                    "PENDING MOLECULAR RESULTS — do not initiate targeted therapy before "
+                    "biomarker results. If EGFR+: Osimertinib 80 mg OD (NCCN Category 1). "
+                    "If PD-L1 ≥50% & driver-negative: Pembrolizumab 200 mg Q3W (NCCN Category 1)."
+                ),
+                "rationale": (
+                    "NCCN 2024 mandates comprehensive molecular testing before first-line systemic "
+                    "therapy in adenocarcinoma. TKI in EGFR-mutant disease yields superior PFS "
+                    "vs chemotherapy (FLAURA2 2023)."
+                ),
+                "alternatives": [
+                    "Carboplatin + Pemetrexed + Pembrolizumab (driver-negative, PD-L1<50%)",
+                    "Clinical trial enrollment (NCCN preferred if available)",
+                    "Definitive chemoRT → Durvalumab consolidation (PACIFIC, if unresectable)",
+                ],
             },
             "debate_rounds_completed": 1,
-            "consensus_score": 82,
-            "disclaimer": "AI research tool. NOT for clinical use.",
-        }
+            "consensus_score": 87,
+            "board_consensus": (
+                "High consensus (87/100) after 1 debate round. Primary revision: "
+                "treatment deferred pending mandatory molecular testing — "
+                "consensus improved from 71 → 87 after amendment."
+            ),
+            "citations": [
+                "Wu YL et al. FLAURA2. NEJM 2023;389:645–657",
+                "Reck M et al. KEYNOTE-024. NEJM 2018;379:2040–2051",
+                "Gandhi L et al. KEYNOTE-189. NEJM 2018;378:2078–2092",
+                "Antonia SJ et al. PACIFIC. NEJM 2018;379:2342–2350",
+                "NCCN NSCLC Guidelines v4.2024",
+            ],
+            "pfs_12mo": 0.78,
+            "disclaimer": "AI research tool. NOT for clinical use. Requires oncologist review.",
+        },
+        "debate_transcript": [
+            {
+                "round": 1,
+                "speaker": "researcher",
+                "message": (
+                    "⚠️ CHALLENGE: Treatment plan proposes TKI initiation without confirmed EGFR status. "
+                    "NCCN Category 1 evidence for osimertinib is conditional on molecular confirmation."
+                ),
+            },
+            {
+                "round": 1,
+                "speaker": "oncologist",
+                "message": (
+                    "Revision accepted. Treatment initiation explicitly deferred pending molecular panel. "
+                    "Mandatory testing added to immediate actions with 7-day reconvene."
+                ),
+                "consensus_score": 87,
+            },
+        ],
     }
 
 
 # ── Core functions ─────────────────────────────────────────────────────────────
 
-def run_demo_case(case_name: str) -> tuple[str, str, str]:
+def run_demo_case(case_name: str):
     """
     Run a pre-baked demo case through the AOB pipeline.
 
-    Returns: (status_text, log_text, report_json)
+    This is a generator so Gradio streams intermediate status updates to the UI.
+    Yields: (status_text, log_text, report_json) tuples progressively.
+    In mock mode: simulates ~33 s pipeline with time.sleep() between stages.
+    In live mode: polls /status every POLL_INTERVAL seconds until done.
     """
     if not API_URL:
-        # Offline/mock mode
-        report = _mock_report(case_name)  # returns dict — gr.JSON expects dict
-        return (
-            "✅ Mock mode — showing pre-baked response (AOB_API_URL not configured)",
-            "🔬 Pathologist → 📚 Researcher → 👨‍⚕️ Oncologist → 🗣️ Debate → ✅ Done",
+        # ── Mock mode: animate stages with sleep ──────────────────────────────
+        log_lines: list[str] = [f"[mock] Running '{case_name}' in demo mode (AOB_API_URL not set)"]
+        yield "⏳ Starting mock pipeline...", "\n".join(log_lines), None
+
+        for stage in _mock_stages():
+            time.sleep(stage["delay_s"])
+            log_lines.append(stage["log_line"])
+            yield stage["message"], "\n".join(log_lines), None
+
+        report = _mock_report(case_name)
+        consensus = report.get("management_plan", {}).get("consensus_score", 87)
+        yield (
+            f"✅ Complete (mock) — 1 debate round | consensus: {consensus}/100 | ~34s",
+            "\n".join(log_lines),
             report,
         )
+        return
 
-    # Submit demo case
+    # ── Live mode: submit + poll ───────────────────────────────────────────────
     resp = _api_post(f"/demo/run/{case_name}", {})
     if not resp:
-        return "❌ Failed to submit demo case", "", ""
+        yield "❌ Failed to submit demo case", "", None
+        return
 
     job_id = resp.get("job_id", "")
     if not job_id:
-        return "❌ No job_id in response", "", ""
+        yield "❌ No job_id in response", "", None
+        return
 
-    # Poll for completion
     t0 = time.time()
-    log_lines: list[str] = [f"Job {job_id} submitted..."]
+    log_lines = [f"Job {job_id} submitted..."]
+    yield f"⏳ Job {job_id} submitted...", log_lines[0], None
 
     while time.time() - t0 < MAX_WAIT_S:
         time.sleep(POLL_INTERVAL)
-
-        # Get new steps
         status_data = _api_get(f"/status/{job_id}")
         if status_data:
             steps = status_data.get("steps", [])
-            if len(steps) > len(log_lines) - 1:
-                for step in steps[len(log_lines) - 1:]:
-                    agent = step.get("agent", "system")
-                    msg   = step.get("message", "")
-                    prog  = step.get("progress", 0)
-                    log_lines.append(f"[{agent}] ({prog}%) {msg}")
+            new_steps = steps[len(log_lines) - 1:]
+            for step in new_steps:
+                agent = step.get("agent", "system")
+                msg   = step.get("message", "")
+                prog  = step.get("progress", 0)
+                log_lines.append(f"[{agent}] ({prog}%) {msg}")
 
             job_status = status_data.get("status", "")
+            last_msg = log_lines[-1] if log_lines else "Running..."
+            yield f"⏳ {last_msg}", "\n".join(log_lines), None
+
             if job_status == "done":
                 break
             if job_status == "failed":
                 err = status_data.get("error", "Unknown error")
-                return f"❌ Pipeline failed: {err}", "\n".join(log_lines), ""
+                yield f"❌ Pipeline failed: {err}", "\n".join(log_lines), None
+                return
 
-    # Fetch final report
     report_data = _api_get(f"/report/{job_id}")
     if not report_data:
-        return "❌ Could not fetch report", "\n".join(log_lines), ""
+        yield "❌ Could not fetch report", "\n".join(log_lines), None
+        return
 
+    mp = report_data.get("management_plan", {})
     status_text = (
-        f"✅ Complete — {report_data.get('debate_rounds_completed', 0)} debate round(s) | "
+        f"✅ Complete — {mp.get('debate_rounds_completed', 0)} debate round(s) | "
+        f"consensus: {mp.get('consensus_score', '?')}/100 | "
         f"Time: {report_data.get('total_time_s', '?')}s"
     )
-    # gr.JSON expects a dict, not a pre-serialised string
-    return status_text, "\n".join(log_lines), report_data
+    yield status_text, "\n".join(log_lines), report_data
 
 
 def run_custom_case(
@@ -179,23 +334,50 @@ def run_custom_case(
     clinical_notes: str,
     egfr_status: str,
     alk_status: str,
-) -> tuple[str, str, str]:
+):
     """
     Run the pipeline on uploaded image patches.
 
-    Returns: (status_text, log_text, report_json)
+    Generator: yields (status_text, log_text, report_json) progressively.
+    In mock mode: simulates the full pipeline with time.sleep() between stages.
     """
     if not images:
-        return "❌ Please upload at least one image patch", "", ""
+        yield "❌ Please upload at least one image patch", "", None
+        return
 
     if not API_URL:
-        return (
-            "⚠️ AOB_API_URL not configured — cannot process custom images in demo mode",
-            "",
-            "",
-        )
+        # ── Mock mode for custom upload ───────────────────────────────────────
+        n = len(images)
+        log_lines: list[str] = [
+            f"[mock] {n} patch(es) received — running demo mode (AOB_API_URL not set)",
+            f"[mock] Patient: {patient_age}y {sex} | EGFR: {egfr_status} | ALK: {alk_status}",
+        ]
+        yield "⏳ Starting mock pipeline for uploaded patches...", "\n".join(log_lines), None
 
-    # Encode images to base64
+        for stage in _mock_stages():
+            time.sleep(stage["delay_s"])
+            log_lines.append(stage["log_line"])
+            yield stage["message"], "\n".join(log_lines), None
+
+        report = _mock_report("custom_upload")
+        # Override biomarker status in the report if user provided values
+        try:
+            bm = report["pathology_report"]["biomarkers"]
+            if egfr_status != "unknown":
+                bm["EGFR"]["level"] = egfr_status
+            if alk_status != "unknown":
+                bm["ALK"]["level"] = alk_status
+        except (KeyError, TypeError):
+            pass
+        consensus = report.get("management_plan", {}).get("consensus_score", 87)
+        yield (
+            f"✅ Complete (mock) — 1 debate round | consensus: {consensus}/100 | ~34s",
+            "\n".join(log_lines),
+            report,
+        )
+        return
+
+    # ── Live mode ─────────────────────────────────────────────────────────────
     patches_b64: list[str] = []
     for img in images:
         try:
@@ -203,7 +385,8 @@ def run_custom_case(
             img.convert("RGB").save(buf, format="JPEG")
             patches_b64.append(base64.b64encode(buf.getvalue()).decode())
         except Exception as e:
-            return f"❌ Failed to encode image: {e}", "", ""
+            yield f"❌ Failed to encode image: {e}", "", None
+            return
 
     payload = {
         "patches_b64": patches_b64,
@@ -211,22 +394,19 @@ def run_custom_case(
             "patient_age": patient_age,
             "sex": sex,
             "clinical_notes": clinical_notes,
-            "biomarker_status": {
-                "EGFR": egfr_status,
-                "ALK": alk_status,
-            },
+            "biomarker_status": {"EGFR": egfr_status, "ALK": alk_status},
         },
     }
 
     resp = _api_post("/analyze", payload)
     if not resp:
-        return "❌ Failed to submit case to API", "", ""
+        yield "❌ Failed to submit case to API", "", None
+        return
 
     job_id = resp.get("job_id", "")
-
-    # Reuse same polling logic
     t0 = time.time()
-    log_lines: list[str] = [f"Job {job_id} submitted ({len(patches_b64)} patches)..."]
+    log_lines = [f"Job {job_id} submitted ({len(patches_b64)} patches)..."]
+    yield f"⏳ Job {job_id} submitted...", log_lines[0], None
 
     while time.time() - t0 < MAX_WAIT_S:
         time.sleep(POLL_INTERVAL)
@@ -240,22 +420,28 @@ def run_custom_case(
                 log_lines.append(f"[{agent}] ({prog}%) {msg}")
 
             job_status = status_data.get("status", "")
+            last_msg = log_lines[-1] if log_lines else "Running..."
+            yield f"⏳ {last_msg}", "\n".join(log_lines), None
+
             if job_status == "done":
                 break
             if job_status == "failed":
                 err = status_data.get("error", "Unknown error")
-                return f"❌ Pipeline failed: {err}", "\n".join(log_lines), ""
+                yield f"❌ Pipeline failed: {err}", "\n".join(log_lines), None
+                return
 
     report_data = _api_get(f"/report/{job_id}")
     if not report_data:
-        return "❌ Could not fetch report", "\n".join(log_lines), ""
+        yield "❌ Could not fetch report", "\n".join(log_lines), None
+        return
 
+    mp = report_data.get("management_plan", {})
     status_text = (
-        f"✅ Complete — {report_data.get('debate_rounds_completed', 0)} debate round(s) | "
+        f"✅ Complete — {mp.get('debate_rounds_completed', 0)} debate round(s) | "
+        f"consensus: {mp.get('consensus_score', '?')}/100 | "
         f"Time: {report_data.get('total_time_s', '?')}s"
     )
-    # gr.JSON expects a dict, not a pre-serialised string
-    return status_text, "\n".join(log_lines), report_data
+    yield status_text, "\n".join(log_lines), report_data
 
 
 # ── Gradio UI ─────────────────────────────────────────────────────────────────
@@ -350,7 +536,7 @@ def build_ui() -> gr.Blocks:
 
                 1. **Agent 1 — Pathologist** (Prov-GigaPath ViT-Giant)
                    - Analyses histopathology image patches
-                   - Returns tissue type, confidence, biomarker scores, attention heatmaps
+                   - Returns tissue type, confidence, and biomarker-related signals
                    - Runs MC Dropout for uncertainty quantification
 
                 2. **Agent 2 — Researcher** (RAG + Llama 3.3 70B)

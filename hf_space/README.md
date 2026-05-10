@@ -27,7 +27,7 @@ complete oncology management plan — with multi-round agent debate.
 ## How it works
 
 1. **Upload** histopathology patch images (224×224, H&E stained)
-2. **Agent 1 (Pathologist)** — GigaPath ViT-Giant classifies tissue + generates attention heatmaps
+2. **Agent 1 (Pathologist)** — GigaPath ViT-Giant classifies tissue and extracts patch-level findings
 3. **Agent 2 (Researcher)** — RAG over NCCN guidelines, retrieves treatment evidence
 4. **Agent 3 (Oncologist)** — Llama 3.3 70B synthesises the final management plan
 5. **Debate loop** — agents challenge, referee, and revise until consensus (score ≥ 70/100)

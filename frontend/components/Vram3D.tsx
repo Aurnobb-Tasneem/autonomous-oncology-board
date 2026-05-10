@@ -8,13 +8,14 @@
 
 const TOTAL_GB = 192;
 
+// Accurate Q4_K_S budget: 40+20+15+22+3+9 = 109 GB / 192 GB
 const FACES = [
-  { label: "Llama 3.3\n70B", gb: 70, color: "#0891b2", accentColor: "#38bdf8" },
-  { label: "KV Cache\n30 GB", gb: 30, color: "#7c3aed", accentColor: "#a78bfa" },
-  { label: "Qwen-VL\n15 GB", gb: 15, color: "#22c55e", accentColor: "#4ade80" },
-  { label: "LoRA ×3\n16 GB", gb: 16, color: "#38bdf8", accentColor: "#7dd3fc" },
-  { label: "GigaPath\n3 GB", gb: 3, color: "#0d9488", accentColor: "#2dd4bf" },
-  { label: "Qdrant\n+Misc 9 GB", gb: 9, color: "#64748b", accentColor: "#94a3b8" },
+  { label: "Llama 3.3 70B\nQ4_K_S", gb: 40, color: "#0891b2", accentColor: "#38bdf8" },
+  { label: "KV Cache\n(full debate)", gb: 20, color: "#7c3aed", accentColor: "#a78bfa" },
+  { label: "Qwen-VL\n7B (BF16)", gb: 15, color: "#22c55e", accentColor: "#4ade80" },
+  { label: "LoRA ×3\n(8B base)", gb: 22, color: "#38bdf8", accentColor: "#7dd3fc" },
+  { label: "GigaPath\nViT-Giant", gb: 3, color: "#0d9488", accentColor: "#2dd4bf" },
+  { label: "Qdrant\n+ Overhead", gb: 9, color: "#64748b", accentColor: "#94a3b8" },
 ];
 
 function CubeFace({
@@ -85,8 +86,9 @@ export default function Vram3D() {
         </div>
       </div>
 
-      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "center" }}>
-        AMD MI300X · 192 GB HBM3 · All models resident simultaneously
+      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>
+        AMD MI300X · 192 GB HBM3<br />
+        ~109 GB used · 83 GB headroom · No model swapping
       </div>
 
       <style>{`

@@ -1,0 +1,351 @@
+{
+  "schema": "aob.flowgraph.v1",
+  "id": "aob-system",
+  "title": "Autonomous Oncology Board (AOB) — System Flow",
+  "description": "Node/edge graph of the multi-agent tumour board pipeline (Pathologist → Researcher → Oncologist), including debate/revision loop, SSE streaming to UI, and core infra (GigaPath, Ollama, Qdrant, VRAM monitoring).",
+  "layout": {
+    "direction": "LR",
+    "defaultNodeSize": { "width": 260, "height": 86 },
+    "grid": 20
+  },
+  "legend": {
+    "nodeKinds": [
+      { "kind": "ui", "label": "Frontend/UI" },
+      { "kind": "api", "label": "API" },
+      { "kind": "agent", "label": "Agent" },
+      { "kind": "model", "label": "Model Runtime" },
+      { "kind": "data", "label": "Data Artifact" },
+      { "kind": "storage", "label": "Storage/Index" },
+      { "kind": "ops", "label": "Ops/Observability" }
+    ],
+    "edgeKinds": [
+      { "kind": "request", "label": "Request/Call" },
+      { "kind": "stream", "label": "Stream" },
+      { "kind": "artifact", "label": "Artifact Output" },
+      { "kind": "retrieve", "label": "Retrieve/Query" },
+      { "kind": "revise", "label": "Critique/Revise Loop" }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "ui.case_upload",
+      "kind": "ui",
+      "label": "Case Upload UI",
+      "subtitle": "patches + metadata + query",
+      "position": { "x": 40, "y": 160 },
+      "refs": [{ "path": "frontend/app/page.tsx" }]
+    },
+    {
+      "id": "ui.timeline",
+      "kind": "ui",
+      "label": "Agent Timeline UI",
+      "subtitle": "live reasoning steps (SSE)",
+      "position": { "x": 40, "y": 40 },
+      "refs": [{ "path": "frontend/components/AgentTimeline.tsx" }]
+    },
+    {
+      "id": "ui.report",
+      "kind": "ui",
+      "label": "Final Report UI",
+      "subtitle": "management plan + citations",
+      "position": { "x": 1360, "y": 160 },
+      "refs": [{ "path": "frontend/app/report/[caseId]/page.tsx" }]
+    },
+    {
+      "id": "api.fastapi",
+      "kind": "api",
+      "label": "FastAPI",
+      "subtitle": "POST /analyze · GET /stream · GET /report",
+      "position": { "x": 320, "y": 140 },
+      "refs": [{ "path": "ml/api.py" }]
+    },
+    {
+      "id": "ops.vram_api",
+      "kind": "ops",
+      "label": "VRAM Endpoint",
+      "subtitle": "rocm-smi JSON (polling)",
+      "position": { "x": 320, "y": 280 },
+      "refs": [{ "path": "scripts/vram_monitor.sh" }]
+    },
+    {
+      "id": "agent.pathologist",
+      "kind": "agent",
+      "label": "Agent 1 — Pathologist",
+      "subtitle": "morphology + embeddings + suspicious regions",
+      "position": { "x": 620, "y": 160 },
+      "refs": [{ "path": "ml/agents/pathologist.py" }]
+    },
+    {
+      "id": "model.gigapath",
+      "kind": "model",
+      "label": "Prov-GigaPath (ViT)",
+      "subtitle": "patch encoder + classifier head",
+      "position": { "x": 620, "y": 300 },
+      "refs": [{ "path": "ml/models/gigapath_loader.py" }]
+    },
+    {
+      "id": "data.pathology_report",
+      "kind": "data",
+      "label": "PathologyReport (JSON)",
+      "subtitle": "tissue_classification + confidence + regions",
+      "position": { "x": 900, "y": 160 }
+    },
+    {
+      "id": "agent.researcher",
+      "kind": "agent",
+      "label": "Agent 2 — Researcher",
+      "subtitle": "RAG synthesis w/ citations",
+      "position": { "x": 900, "y": 40 },
+      "refs": [{ "path": "ml/agents/researcher.py" }]
+    },
+    {
+      "id": "storage.qdrant",
+      "kind": "storage",
+      "label": "Qdrant (in-process)",
+      "subtitle": "local vector DB for corpus + memory",
+      "position": { "x": 900, "y": -80 },
+      "refs": [{ "path": "ml/rag/retriever.py" }]
+    },
+    {
+      "id": "data.evidence_bundle",
+      "kind": "data",
+      "label": "EvidenceBundle (JSON)",
+      "subtitle": "protocols + staging guidance + citations",
+      "position": { "x": 1140, "y": 40 }
+    },
+    {
+      "id": "agent.oncologist",
+      "kind": "agent",
+      "label": "Agent 3 — Oncologist (Chair)",
+      "subtitle": "TNM staging + NCCN categories + plan",
+      "position": { "x": 1140, "y": 160 },
+      "refs": [{ "path": "ml/agents/oncologist.py" }, { "path": "ml/board.py" }]
+    },
+    {
+      "id": "model.ollama",
+      "kind": "model",
+      "label": "Ollama (ROCm-native)",
+      "subtitle": "Llama 3.3 70B serving (localhost:11434)",
+      "position": { "x": 1140, "y": 300 },
+      "refs": [{ "path": "ml/models/llm_client.py" }]
+    },
+    {
+      "id": "data.management_plan",
+      "kind": "data",
+      "label": "Patient Management Plan",
+      "subtitle": "structured markdown / schema output",
+      "position": { "x": 1360, "y": 160 }
+    },
+    {
+      "id": "agent.meta_eval",
+      "kind": "agent",
+      "label": "Meta-Evaluator",
+      "subtitle": "consensus score (0–100)",
+      "position": { "x": 1360, "y": 40 },
+      "refs": [{ "path": "ml/agents/meta_evaluator.py" }]
+    },
+    {
+      "id": "agent.debate_critique",
+      "kind": "agent",
+      "label": "Debate — Critique",
+      "subtitle": "challenge missing evidence / tests",
+      "position": { "x": 1360, "y": -80 },
+      "refs": [{ "path": "ml/agents/differential.py" }, { "path": "ml/agents/biomarker_specialist.py" }]
+    },
+    {
+      "id": "agent.debate_revise",
+      "kind": "agent",
+      "label": "Debate — Revise",
+      "subtitle": "oncologist updates plan + revision history",
+      "position": { "x": 1580, "y": -80 }
+    },
+    {
+      "id": "storage.board_memory",
+      "kind": "storage",
+      "label": "Board Memory",
+      "subtitle": "similar-case retrieval (optional)",
+      "position": { "x": 900, "y": -200 },
+      "refs": [{ "path": "ml/agents/board_memory.py" }]
+    },
+    {
+      "id": "agent.uncertainty",
+      "kind": "agent",
+      "label": "Uncertainty",
+      "subtitle": "MC dropout / calibration (optional)",
+      "position": { "x": 760, "y": 40 },
+      "refs": [{ "path": "ml/agents/uncertainty.py" }]
+    },
+    {
+      "id": "model.explainability",
+      "kind": "model",
+      "label": "Explainability",
+      "subtitle": "attention heatmaps (optional)",
+      "position": { "x": 760, "y": 300 },
+      "refs": [{ "path": "ml/models/explainability.py" }]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e.ui_to_api.analyze",
+      "kind": "request",
+      "source": "ui.case_upload",
+      "target": "api.fastapi",
+      "label": "POST /analyze",
+      "data": { "payload": ["patches", "metadata", "query"] }
+    },
+    {
+      "id": "e.api_to_ui.stream",
+      "kind": "stream",
+      "source": "api.fastapi",
+      "target": "ui.timeline",
+      "label": "GET /stream (SSE)",
+      "data": { "stream": "agent_steps" }
+    },
+    {
+      "id": "e.ui_to_api.vram",
+      "kind": "request",
+      "source": "ui.timeline",
+      "target": "ops.vram_api",
+      "label": "poll (2s)",
+      "data": { "metric": "vram_used_gb" }
+    },
+    {
+      "id": "e.api_to_agent.pathologist",
+      "kind": "request",
+      "source": "api.fastapi",
+      "target": "agent.pathologist",
+      "label": "dispatch: agent1"
+    },
+    {
+      "id": "e.pathologist_to_gigapath",
+      "kind": "request",
+      "source": "agent.pathologist",
+      "target": "model.gigapath",
+      "label": "encode patches",
+      "data": { "input": "N×3×224×224" }
+    },
+    {
+      "id": "e.gigapath_to_explainability",
+      "kind": "request",
+      "source": "model.gigapath",
+      "target": "model.explainability",
+      "label": "attention maps (optional)"
+    },
+    {
+      "id": "e.pathologist_to_uncertainty",
+      "kind": "request",
+      "source": "agent.pathologist",
+      "target": "agent.uncertainty",
+      "label": "uncertainty (optional)"
+    },
+    {
+      "id": "e.pathologist_to_report",
+      "kind": "artifact",
+      "source": "agent.pathologist",
+      "target": "data.pathology_report",
+      "label": "PathologyReport JSON"
+    },
+    {
+      "id": "e.api_to_agent.researcher",
+      "kind": "request",
+      "source": "api.fastapi",
+      "target": "agent.researcher",
+      "label": "dispatch: agent2"
+    },
+    {
+      "id": "e.researcher_to_qdrant",
+      "kind": "retrieve",
+      "source": "agent.researcher",
+      "target": "storage.qdrant",
+      "label": "top-K retrieve",
+      "data": { "k": 8 }
+    },
+    {
+      "id": "e.qdrant_to_researcher",
+      "kind": "retrieve",
+      "source": "storage.qdrant",
+      "target": "agent.researcher",
+      "label": "chunks + metadata"
+    },
+    {
+      "id": "e.researcher_to_evidence",
+      "kind": "artifact",
+      "source": "agent.researcher",
+      "target": "data.evidence_bundle",
+      "label": "EvidenceBundle JSON"
+    },
+    {
+      "id": "e.api_to_agent.oncologist",
+      "kind": "request",
+      "source": "api.fastapi",
+      "target": "agent.oncologist",
+      "label": "dispatch: agent3"
+    },
+    {
+      "id": "e.oncologist_to_ollama",
+      "kind": "request",
+      "source": "agent.oncologist",
+      "target": "model.ollama",
+      "label": "generate plan"
+    },
+    {
+      "id": "e.oncologist_to_plan",
+      "kind": "artifact",
+      "source": "agent.oncologist",
+      "target": "data.management_plan",
+      "label": "Management Plan"
+    },
+    {
+      "id": "e.api_to_ui.report",
+      "kind": "request",
+      "source": "api.fastapi",
+      "target": "ui.report",
+      "label": "GET /report"
+    },
+    {
+      "id": "e.plan_to_meta_eval",
+      "kind": "request",
+      "source": "data.management_plan",
+      "target": "agent.meta_eval",
+      "label": "score consensus"
+    },
+    {
+      "id": "e.meta_eval_to_debate_critique",
+      "kind": "revise",
+      "source": "agent.meta_eval",
+      "target": "agent.debate_critique",
+      "label": "trigger critique (optional)",
+      "data": { "if_consensus_below": 75 }
+    },
+    {
+      "id": "e.critique_to_revise",
+      "kind": "revise",
+      "source": "agent.debate_critique",
+      "target": "agent.debate_revise",
+      "label": "critique → revise"
+    },
+    {
+      "id": "e.revise_to_oncologist",
+      "kind": "revise",
+      "source": "agent.debate_revise",
+      "target": "agent.oncologist",
+      "label": "revise draft"
+    },
+    {
+      "id": "e.pathology_to_memory",
+      "kind": "artifact",
+      "source": "data.pathology_report",
+      "target": "storage.board_memory",
+      "label": "upsert embedding (optional)"
+    },
+    {
+      "id": "e.memory_to_oncologist",
+      "kind": "retrieve",
+      "source": "storage.board_memory",
+      "target": "agent.oncologist",
+      "label": "similar cases (optional)",
+      "data": { "k": 3 }
+    }
+  ]
+}
+

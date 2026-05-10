@@ -150,9 +150,6 @@ export default function HomePage() {
               <Link href="/benchmark" className="btn-ghost" style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", textDecoration: "none" }}>
                 📊 Benchmark
               </Link>
-              <Link href="/concurrent" className="btn-ghost" style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", textDecoration: "none" }}>
-                ⚡ Concurrent
-              </Link>
             </div>
 
             {/* Demo case cards */}
@@ -248,7 +245,7 @@ export default function HomePage() {
                 icon: "🔬",
                 label: "Pathologist",
                 sub: "GigaPath ViT-Giant 1.1B",
-                desc: "Analyses histopathology patches. Generates attention heatmaps. Runs MC Dropout uncertainty. Extracts 8 biomarker scores.",
+                desc: "Analyses histopathology patches with GigaPath ViT-Giant. Runs MC Dropout uncertainty quantification. Extracts 8 biomarker scores.",
                 color: "#0d9488",
               },
               {
