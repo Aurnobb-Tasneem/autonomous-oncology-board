@@ -23,70 +23,190 @@ export const MOCK_STAGE_DEFS: MockStageDef[] = [
     elapsed_ms: 0,
     agent: "system",
     message: "Board session initialised — AMD MI300X 192 GB HBM3 unified memory",
-    progress: 0,
+    progress: 2,
   },
   {
     elapsed_ms: 1200,
     agent: "pathologist",
-    message: "Loading Prov-GigaPath ViT-Giant encoder (FP16, ~3 GB VRAM)",
-    progress: 5,
+    message: "GigaPath: loading model and preprocessing 12 patches",
+    progress: 8,
   },
   {
     elapsed_ms: 3500,
     agent: "pathologist",
-    message: "Encoding 12 patches — MC Dropout ×20 stochastic forward passes",
-    progress: 15,
+    message: "GigaPath: 12 patches analysed → Lung Adenocarcinoma (94% confidence)",
+    progress: 30,
   },
   {
-    elapsed_ms: 8000,
+    elapsed_ms: 4500,
     agent: "pathologist",
-    message:
-      "Tissue classified: Lung Adenocarcinoma — 94.2% ± 3.1% (uncertainty: low)",
-    progress: 28,
+    message: "🔥 9 attention heatmaps generated — suspicious regions highlighted in red",
+    progress: 35,
   },
   {
-    elapsed_ms: 9200,
+    elapsed_ms: 5500,
+    agent: "pathologist",
+    message: "MC Dropout ×20: Uncertainty 94.2% ± 3.1% (low) — second-opinion biopsy not required",
+    progress: 38,
+  },
+  {
+    elapsed_ms: 6500,
+    agent: "system",
+    message: "🗃️ Board Memory: 3 similar past case(s) retrieved (top similarity: 93%)",
+    progress: 34,
+  },
+  {
+    elapsed_ms: 7000,
+    agent: "vlm_pathologist",
+    message: "Qwen2.5-VL-7B: requesting visual second opinion on 4 patches...",
+    progress: 40,
+  },
+  {
+    elapsed_ms: 12000,
+    agent: "vlm_pathologist",
+    message:
+      "Qwen2.5-VL: 'lung adenocarcinoma' — Irregular glandular structures with nuclear atypia, increased N/C ratio, and stromal desmoplasia consistent with invasive adenocarcinoma...",
+    progress: 42,
+  },
+  {
+    elapsed_ms: 12800,
+    agent: "vlm_pathologist",
+    message: "Malignancy indicators: nuclear atypia, irregular gland borders, high N/C ratio, stromal desmoplasia",
+    progress: 43,
+  },
+  {
+    elapsed_ms: 13500,
+    agent: "system",
+    message: "VLM reconciliation: agreement=88/100 · consensus_tissue='lung_adenocarcinoma'",
+    progress: 45,
+  },
+  {
+    elapsed_ms: 14000,
     agent: "researcher",
     message: "Querying Qdrant in-process corpus — retrieving top-8 chunks",
     progress: 35,
   },
   {
-    elapsed_ms: 14500,
+    elapsed_ms: 16500,
     agent: "researcher",
-    message:
-      "Evidence loaded: NCCN NSCLC 2024 guidelines + 7 TCGA studies — synthesising via Llama 3.3 70B",
-    progress: 50,
+    message: "Evidence loaded: NCCN NSCLC 2024 + 7 TCGA studies — synthesising via Llama 3.3 70B",
+    progress: 52,
   },
   {
-    elapsed_ms: 17000,
+    elapsed_ms: 17500,
+    agent: "researcher",
+    message: "Synthesised 4 treatment options (evidence quality: high)",
+    progress: 56,
+  },
+  {
+    elapsed_ms: 18000,
     agent: "tnm_specialist",
-    message: "TNM staging: T2bN2M0 → Stage IIIA confirmed (AJCC 8th Ed.)",
+    message: "Llama-3.1-8B LoRA: running TNM staging specialist...",
+    progress: 57,
+  },
+  {
+    elapsed_ms: 19500,
+    agent: "tnm_specialist",
+    message: "TNM result: T2bN2M0 (confidence: 0.87) · AJCC Stage IIIA — T:T2b  N:N2  M:M0",
+    progress: 59,
+  },
+  {
+    elapsed_ms: 20000,
+    agent: "biomarker_specialist",
+    message: "Biomarker specialist: EGFR/ALK/ROS1/PD-L1/KRAS/BRAF/MET panel required (confidence: 0.91)",
+    progress: 60,
+  },
+  {
+    elapsed_ms: 20800,
+    agent: "differential",
+    message:
+      "Primary: Lung Adenocarcinoma (89%) | DDx: Mucinous adenocarcinoma (7%), Large cell carcinoma (4%)",
     progress: 62,
   },
   {
     elapsed_ms: 21500,
+    agent: "treatment_specialist",
+    message: "NCCN Category 1: treatment initiation deferred pending EGFR molecular confirmation",
+    progress: 64,
+  },
+  {
+    elapsed_ms: 22000,
     agent: "oncologist",
-    message: "Synthesising Patient Management Plan — Llama 3.3 70B generating (~40 GB VRAM)",
-    progress: 75,
+    message: "Llama 3.3 70B: synthesising initial management plan...",
+    progress: 65,
   },
   {
     elapsed_ms: 26000,
-    agent: "debate",
-    message:
-      "⚠️ Researcher challenge: EGFR status unknown — NCCN Category 1 TKI therapy requires molecular confirmation first",
-    progress: 85,
+    agent: "oncologist",
+    message: "Initial plan complete — Lung Adenocarcinoma (confidence: 87%)",
+    progress: 72,
   },
   {
-    elapsed_ms: 30500,
-    agent: "debate",
+    elapsed_ms: 26500,
+    agent: "system",
+    message: "🗣️ Agent Debate: initiating multi-round deliberation...",
+    progress: 74,
+  },
+  {
+    elapsed_ms: 27000,
+    agent: "researcher",
+    message: "Round 1: reviewing draft plan against NCCN guidelines...",
+    progress: 75,
+  },
+  {
+    elapsed_ms: 29000,
+    agent: "researcher",
     message:
-      "Oncologist revision accepted: molecular panel added to immediate actions — consensus improving",
-    progress: 92,
+      "⚠️ CHALLENGE: EGFR status unknown — NCCN Category 1 TKI therapy requires molecular confirmation before initiation",
+    progress: 77,
+  },
+  {
+    elapsed_ms: 29500,
+    agent: "oncologist",
+    message: "Round 1: revising management plan based on challenge...",
+    progress: 82,
+  },
+  {
+    elapsed_ms: 31500,
+    agent: "oncologist",
+    message: "Revision accepted: molecular panel added to immediate actions — consensus improving",
+    progress: 84,
+  },
+  {
+    elapsed_ms: 32500,
+    agent: "system",
+    message: "Consensus score: 87/100 — ✅ consensus reached, debate complete",
+    progress: 89,
   },
   {
     elapsed_ms: 33000,
+    agent: "patient_summary",
+    message: "Patient summary ready (plain English, 8th-grade reading level)",
+    progress: 89,
+  },
+  {
+    elapsed_ms: 33500,
+    agent: "trial_matcher",
+    message: "2 potentially eligible clinical trial(s) found (NCT05261399, NCT04667234)",
+    progress: 91,
+  },
+  {
+    elapsed_ms: 34000,
     agent: "system",
-    message: "Board consensus 87/100 — plan finalised and signed off (1 debate round)",
+    message: "Digital Twin: 12-month PFS prediction 78% ± 6% (TCGA LUAD kinetics)",
+    progress: 92,
+  },
+  {
+    elapsed_ms: 34500,
+    agent: "counterfactual",
+    message:
+      "Counterfactual (EGFR-negative): first-line → Carboplatin + Pemetrexed + Pembrolizumab",
+    progress: 95,
+  },
+  {
+    elapsed_ms: 35000,
+    agent: "system",
+    message: "✅ Analysis complete — Lung Adenocarcinoma | 1 debate round completed",
     progress: 100,
   },
 ];
@@ -433,35 +553,38 @@ export const MOCK_DEMO_CASES = [
 
 // ── VRAM info ──────────────────────────────────────────────────────────────────
 
+// Model breakdown sums to 95.0 GB used out of 192 GB total
 export const MOCK_VRAM_INFO = {
-  used_gb: 88.2,
-  total_gb: 191.7,
-  free_gb: 103.5,
-  percent_used: 46.0,
-  used_gib: 82.1,
-  total_gib: 178.5,
-  free_gib: 96.4,
-  percent_gib: 46.0,
+  used_gb: 95.0,
+  total_gb: 192.0,
+  free_gb: 97.0,
+  percent_used: 49.5,
+  used_gib: 88.5,
+  total_gib: 178.8,
+  free_gib: 90.3,
+  percent_gib: 49.5,
   model_breakdown: {
     gigapath_gb: 3.1,
+    qwen_vl_gb: 15.0,
     llama_gb: 40.4,
-    kv_cache_gb: 31.2,
-    lora_gb: 2.8,
-    runtime_overhead_gb: 10.7,
+    lora_gb: 8.5,
+    kv_cache_gb: 18.0,
+    runtime_overhead_gb: 10.0,
   },
   model_components: [
-    { id: "gigapath", label: "Prov-GigaPath ViT-Giant (FP16)", gb: 3.1 },
-    { id: "llama",    label: "Llama 3.3 70B (Ollama q4_K_S)",  gb: 40.4 },
-    { id: "kv_cache", label: "KV Cache (active sessions)",      gb: 31.2 },
-    { id: "lora",     label: "LoRA Adapters (TNM/BM/TX)",       gb: 2.8 },
-    { id: "overhead", label: "ROCm runtime + buffers",          gb: 10.7 },
+    { id: "llama",    label: "Llama 3.3 70B (Q4_K_S)",          gb: 40.4 },
+    { id: "qwen_vl",  label: "Qwen2.5-VL-7B (BF16)",            gb: 15.0 },
+    { id: "lora",     label: "LoRA Specialists ×3",              gb: 8.5  },
+    { id: "kv_cache", label: "KV Cache",                         gb: 18.0 },
+    { id: "gigapath", label: "GigaPath ViT-Giant (FP16)",        gb: 3.1  },
+    { id: "overhead", label: "ROCm + Runtime",                   gb: 10.0 },
   ],
   unattributed_gpu_gb: null,
   ollama_model: "llama3.3:70b-instruct-q4_K_S",
-  processes: { uvicorn: 52.2, ollama: 36.0 },
+  processes: { uvicorn: 59.0, ollama: 36.0 },
   processes_display: [
-    { process: "uvicorn (FastAPI + GigaPath)", label: "ML API", gb: 52.2 },
-    { process: "ollama (Llama 3.3 70B)",       label: "LLM",    gb: 36.0 },
+    { process: "uvicorn", label: "ML API (FastAPI + GigaPath + Qwen-VL + LoRA)", gb: 59.0 },
+    { process: "ollama",  label: "Ollama (Llama 3.3 70B)",                       gb: 36.0 },
   ],
   source: "mock" as const,
 };
@@ -472,33 +595,33 @@ export function getMockVramHistory(seconds: number): object {
   const n = Math.min(seconds, 120);
   for (let i = n; i >= 0; i--) {
     const t = now - i * 1000;
-    // Simulate a ramp that reached steady-state ~90s ago
+    // Ramp that reached steady-state ~90s ago; jitter ±0.3 GB at steady state
     const age = i;
     let used: number;
     if (age > 90) {
-      used = 5 + (88.2 - 5) * Math.max(0, 1 - (age - 90) / 30);
+      used = 5 + (95.0 - 5) * Math.max(0, 1 - (age - 90) / 30);
     } else {
-      used = 88.2 + (Math.random() - 0.5) * 0.4;
+      used = 95.0 + (Math.random() - 0.5) * 0.6;
     }
-    used = Math.max(5, Math.min(191.7, used));
+    used = Math.max(5, Math.min(192.0, used));
     points.push({
       ts: t,
       used_gb: parseFloat(used.toFixed(1)),
-      total_gb: 191.7,
+      total_gb: 192.0,
       used_gib: parseFloat((used * 0.931).toFixed(1)),
-      total_gib: 178.5,
-      pct: parseFloat(((used / 191.7) * 100).toFixed(1)),
+      total_gib: 178.8,
+      pct: parseFloat(((used / 192.0) * 100).toFixed(1)),
     });
   }
   return {
     points,
-    current_gb: 88.2,
-    total_gb: 191.7,
-    current_gib: 82.1,
-    total_gib: 178.5,
+    current_gb: 95.0,
+    total_gb: 192.0,
+    current_gib: 88.5,
+    total_gib: 178.8,
     h100_limit_gb: 80.0,
-    mi300x_total_gb: 191.7,
-    mi300x_total_gib: 178.5,
+    mi300x_total_gb: 192.0,
+    mi300x_total_gib: 178.8,
     oom_if_h100: true,
   };
 }

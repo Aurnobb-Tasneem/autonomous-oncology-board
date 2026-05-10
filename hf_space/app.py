@@ -83,76 +83,202 @@ def _get_demo_cases() -> list[str]:
 
 def _mock_stages() -> list[dict]:
     """
-    Return ordered pipeline steps for the mock flow.
-    Each dict has 'delay_s' (sleep before emitting), 'agent', 'message', 'log_line'.
-    Total elapsed: ~33 seconds, matching live MI300X timing.
+    Return ordered pipeline steps matching the real board.py emit() sequence.
+    Each dict: 'delay_s' (sleep before emitting), 'agent', 'message', 'log_line'.
+    Total elapsed: ~35 seconds, matching live MI300X timing.
+    Includes all real agents: pathologist, vlm_pathologist, researcher,
+    tnm_specialist, biomarker_specialist, differential, treatment_specialist,
+    oncologist, patient_summary, trial_matcher, counterfactual, system.
     """
     return [
         {
             "delay_s": 0.5,
             "agent": "system",
             "message": "⏳ Board session initialised — AMD MI300X 192 GB HBM3 unified memory",
-            "log_line": "[system] (0%) Board session initialised — AMD MI300X 192 GB HBM3",
+            "log_line": "[system] (2%) Board session initialised — AMD MI300X 192 GB HBM3",
         },
         {
             "delay_s": 1.2,
             "agent": "pathologist",
-            "message": "🔬 Loading Prov-GigaPath ViT-Giant encoder (FP16, ~3 GB VRAM)...",
-            "log_line": "[pathologist] (5%) Loading Prov-GigaPath ViT-Giant encoder (FP16, ~3 GB VRAM)",
+            "message": "🔬 GigaPath: loading model and preprocessing 12 patches",
+            "log_line": "[pathologist] (8%) GigaPath: loading model and preprocessing 12 patches",
         },
         {
             "delay_s": 2.3,
             "agent": "pathologist",
-            "message": "🔬 Encoding patches — MC Dropout ×20 stochastic forward passes...",
-            "log_line": "[pathologist] (15%) Encoding patches — MC Dropout ×20 stochastic forward passes",
+            "message": "🔬 GigaPath: 12 patches analysed → Lung Adenocarcinoma (94% confidence)",
+            "log_line": "[pathologist] (30%) 12 patches analysed → Lung Adenocarcinoma (94%)",
         },
         {
-            "delay_s": 4.5,
+            "delay_s": 1.0,
             "agent": "pathologist",
-            "message": "🔬 Tissue classified: Lung Adenocarcinoma — 94.2% ± 3.1% (uncertainty: low)",
-            "log_line": "[pathologist] (28%) Tissue classified: Lung Adenocarcinoma — 94.2% ± 3.1%",
+            "message": "🔥 9 attention heatmaps generated — suspicious regions highlighted in red",
+            "log_line": "[pathologist] (35%) 9 heatmaps generated — suspicious regions in red",
         },
         {
-            "delay_s": 1.2,
+            "delay_s": 1.0,
+            "agent": "pathologist",
+            "message": "🔬 MC Dropout ×20: Uncertainty 94.2% ± 3.1% (low) — biopsy not required",
+            "log_line": "[pathologist] (38%) MC Dropout ×20: 94.2% ± 3.1% (uncertainty: low)",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "system",
+            "message": "🗃️ Board Memory: 3 similar past case(s) retrieved (top similarity: 93%)",
+            "log_line": "[system] (34%) Board Memory: 3 similar cases retrieved",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "vlm_pathologist",
+            "message": "👁️ Qwen2.5-VL-7B: requesting visual second opinion on 4 patches...",
+            "log_line": "[vlm_pathologist] (40%) Qwen2.5-VL-7B: requesting visual second opinion...",
+        },
+        {
+            "delay_s": 5.0,
+            "agent": "vlm_pathologist",
+            "message": (
+                "👁️ Qwen2.5-VL: 'lung adenocarcinoma' — Irregular glandular structures "
+                "with nuclear atypia, increased N/C ratio, stromal desmoplasia..."
+            ),
+            "log_line": "[vlm_pathologist] (42%) Qwen2.5-VL: 'lung adenocarcinoma' confirmed",
+        },
+        {
+            "delay_s": 0.8,
+            "agent": "vlm_pathologist",
+            "message": "👁️ Malignancy indicators: nuclear atypia, irregular gland borders, high N/C ratio, stromal desmoplasia",
+            "log_line": "[vlm_pathologist] (43%) Malignancy indicators: nuclear atypia, gland irregularity, high N/C ratio",
+        },
+        {
+            "delay_s": 0.7,
+            "agent": "system",
+            "message": "🔗 VLM reconciliation: agreement=88/100 · consensus_tissue='lung_adenocarcinoma'",
+            "log_line": "[system] (45%) VLM reconciliation: agreement=88/100",
+        },
+        {
+            "delay_s": 0.5,
             "agent": "researcher",
-            "message": "📚 Querying Qdrant corpus — retrieving top-8 evidence chunks...",
-            "log_line": "[researcher] (35%) Querying Qdrant corpus — top-8 chunks retrieved",
+            "message": "📚 Querying Qdrant in-process corpus — retrieving top-8 chunks",
+            "log_line": "[researcher] (35%) Querying Qdrant — top-8 chunks retrieved",
         },
         {
-            "delay_s": 5.3,
+            "delay_s": 2.5,
             "agent": "researcher",
             "message": "📚 Evidence loaded: NCCN NSCLC 2024 + 7 TCGA studies — synthesising via Llama 3.3 70B",
-            "log_line": "[researcher] (50%) Evidence loaded: NCCN NSCLC 2024 + 7 TCGA studies",
+            "log_line": "[researcher] (52%) Evidence: NCCN NSCLC 2024 + 7 TCGA studies loaded",
         },
         {
-            "delay_s": 2.5,
+            "delay_s": 1.0,
+            "agent": "researcher",
+            "message": "📚 Synthesised 4 treatment options (evidence quality: high)",
+            "log_line": "[researcher] (56%) Synthesised 4 treatment options",
+        },
+        {
+            "delay_s": 0.5,
             "agent": "tnm_specialist",
-            "message": "🏷️ TNM staging: T2bN2M0 → Stage IIIA confirmed (AJCC 8th Ed.)",
-            "log_line": "[tnm_specialist] (62%) TNM staging: T2bN2M0 → Stage IIIA (AJCC 8th Ed.)",
+            "message": "🏷️ Llama-3.1-8B LoRA: running TNM staging specialist...",
+            "log_line": "[tnm_specialist] (57%) Llama-3.1-8B LoRA: running TNM staging...",
         },
         {
-            "delay_s": 4.5,
+            "delay_s": 1.5,
+            "agent": "tnm_specialist",
+            "message": "🏷️ TNM result: T2bN2M0 · AJCC Stage IIIA — T:T2b  N:N2  M:M0 (confidence: 0.87)",
+            "log_line": "[tnm_specialist] (59%) T2bN2M0 → Stage IIIA (AJCC 8th Ed.)",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "biomarker_specialist",
+            "message": "🧬 Biomarker specialist: EGFR/ALK/ROS1/PD-L1/KRAS/BRAF/MET panel required (confidence: 0.91)",
+            "log_line": "[biomarker_specialist] (60%) EGFR/ALK/ROS1/PD-L1/KRAS/BRAF/MET panel required",
+        },
+        {
+            "delay_s": 0.8,
+            "agent": "differential",
+            "message": "📋 Primary: Lung Adenocarcinoma (89%) | DDx: Mucinous adenocarcinoma (7%), Large cell carcinoma (4%)",
+            "log_line": "[differential] (62%) Lung Adenocarcinoma 89% | Mucinous adeno 7% | LCC 4%",
+        },
+        {
+            "delay_s": 0.7,
+            "agent": "treatment_specialist",
+            "message": "💊 NCCN Category 1: treatment deferred pending EGFR molecular confirmation",
+            "log_line": "[treatment_specialist] (64%) NCCN Cat 1: treatment pending EGFR confirmation",
+        },
+        {
+            "delay_s": 0.5,
             "agent": "oncologist",
-            "message": "👨‍⚕️ Synthesising Patient Management Plan via Llama 3.3 70B (~40 GB VRAM)...",
-            "log_line": "[oncologist] (75%) Synthesising Patient Management Plan",
+            "message": "👨‍⚕️ Llama 3.3 70B: synthesising initial management plan...",
+            "log_line": "[oncologist] (65%) Llama 3.3 70B: synthesising management plan...",
         },
         {
-            "delay_s": 4.5,
-            "agent": "debate",
-            "message": "⚠️ Researcher challenge: EGFR status unknown — NCCN Category 1 pending molecular testing",
-            "log_line": "[debate] (85%) Researcher challenge: EGFR unknown — Cat 1 deferred",
+            "delay_s": 4.0,
+            "agent": "oncologist",
+            "message": "👨‍⚕️ Initial plan complete — Lung Adenocarcinoma (confidence: 87%)",
+            "log_line": "[oncologist] (72%) Initial plan complete — Lung Adenocarcinoma (87%)",
         },
         {
-            "delay_s": 4.5,
-            "agent": "debate",
-            "message": "✏️ Oncologist revision: molecular panel added to immediate actions",
-            "log_line": "[debate] (92%) Oncologist revision: molecular panel added — consensus improving",
-        },
-        {
-            "delay_s": 2.5,
+            "delay_s": 0.5,
             "agent": "system",
-            "message": "✅ Board consensus 87/100 — plan finalised and signed off (1 debate round)",
-            "log_line": "[system] (100%) Consensus 87/100 — plan finalised",
+            "message": "🗣️ Agent Debate: initiating multi-round deliberation...",
+            "log_line": "[system] (74%) Agent Debate: initiating multi-round deliberation",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "researcher",
+            "message": "🗣️ Round 1: reviewing draft plan against NCCN guidelines...",
+            "log_line": "[researcher] (75%) Round 1: reviewing draft plan vs NCCN guidelines",
+        },
+        {
+            "delay_s": 2.0,
+            "agent": "researcher",
+            "message": "⚠️ CHALLENGE: EGFR status unknown — NCCN Category 1 TKI requires molecular confirmation before initiation",
+            "log_line": "[researcher] (77%) CHALLENGE: EGFR unknown — NCCN Cat 1 pending molecular confirmation",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "oncologist",
+            "message": "✏️ Round 1: revising management plan based on challenge...",
+            "log_line": "[oncologist] (82%) Round 1: revising plan based on researcher challenge",
+        },
+        {
+            "delay_s": 2.0,
+            "agent": "oncologist",
+            "message": "✏️ Revision accepted: molecular panel added to immediate actions — consensus improving",
+            "log_line": "[oncologist] (84%) Revision: molecular panel added — consensus improving",
+        },
+        {
+            "delay_s": 1.0,
+            "agent": "system",
+            "message": "✅ Consensus score: 87/100 — consensus reached, debate complete",
+            "log_line": "[system] (89%) Consensus 87/100 — debate complete",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "patient_summary",
+            "message": "📄 Patient summary ready (plain English, 8th-grade reading level)",
+            "log_line": "[patient_summary] (89%) Patient summary ready (8th-grade English)",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "trial_matcher",
+            "message": "🔍 2 potentially eligible clinical trial(s) found (NCT05261399, NCT04667234)",
+            "log_line": "[trial_matcher] (91%) 2 eligible trials found",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "system",
+            "message": "📈 Digital Twin: 12-month PFS prediction 78% ± 6% (TCGA LUAD kinetics)",
+            "log_line": "[system] (92%) Digital Twin: 12-month PFS 78% ± 6%",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "counterfactual",
+            "message": "🔄 Counterfactual (EGFR-negative): first-line → Carboplatin + Pemetrexed + Pembrolizumab",
+            "log_line": "[counterfactual] (95%) Counterfactual EGFR-: chemo-immuno combination",
+        },
+        {
+            "delay_s": 0.5,
+            "agent": "system",
+            "message": "✅ Analysis complete — Lung Adenocarcinoma | 1 debate round completed | ~35s",
+            "log_line": "[system] (100%) Analysis complete — 1 debate round | ~35s",
         },
     ]
 
